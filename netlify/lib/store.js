@@ -7,7 +7,16 @@
 
 const { getStore } = require("@netlify/blobs");
 
+// El auto-detect de Netlify Blobs a veces no encuentra el contexto del sitio
+// (pasa en algunos deploys) y tira "environment has not been configured".
+// Si existen estas dos variables de entorno, las usamos a mano; si no,
+// probamos el modo automatico como antes.
 function store() {
+  const siteID = process.env.BLOBS_SITE_ID;
+  const token = process.env.BLOBS_TOKEN;
+  if (siteID && token) {
+    return getStore({ name: "staybaires", siteID, token });
+  }
   return getStore("staybaires");
 }
 
