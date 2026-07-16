@@ -1,0 +1,48 @@
+[
+  {
+    "id": "susana",
+    "nombre": "Susana",
+    "rol": "empleada",
+    "jerarquia": "principal",
+    "ordenAsignacion": 1,
+    "tarifaPorDia": 10000,
+    "notas": "Primera opcion de asignacion automatica"
+  },
+  {
+    "id": "mari",
+    "nombre": "Mari",
+    "rol": "empleada",
+    "jerarquia": "secundaria",
+    "ordenAsignacion": 2,
+    "tarifaPorDia": 5000,
+    "notas": "Cubre cuando Susana no puede"
+  },
+  {
+    "id": "random",
+    "nombre": "Random",
+    "rol": "empleada",
+    "jerarquia": "rotativa",
+    "ordenAsignacion": 3,
+    "tarifaPorDia": 5000,
+    "esRotativa": true,
+    "notas": "Persona variable cada vez. Al asignar una tarea a Random hay que anotar el nombre real de quien cubre ese dia."
+  },
+  {
+    "id": "lujan",
+    "nombre": "Lujan",
+    "rol": "lavanderia",
+    "jerarquia": null,
+    "ordenAsignacion": null,
+    "tarifaPorDia": null,
+    "notas": "Retiros y entregas de blanqueria. Se paga por transferencia, no por dia trabajado."
+  },
+  {
+    "id": "esteban",
+    "nombre": "Esteban",
+    "rol": "admin",
+    "jerarquia": null,
+    "ordenAsignacion": null,
+    "tarifaPorDia": null,
+    "notas": "Administrador"
+  }
+]

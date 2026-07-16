@@ -1,0 +1,222 @@
+[
+  {
+    "codigo": "1100",
+    "nombre": "Mariana Depto",
+    "barrio": "Belgrano",
+    "direccion": "Céspedes 2459, piso 2 depto H",
+    "tarifaLimpiezaUSD": 30,
+    "icalAirbnb": "https://www.airbnb.com.ar/calendar/ical/944224595337894453.ics?t=13580534669f48bbb778c526f3572d06",
+    "icalBooking": null,
+    "icalVrbo": null
+  },
+  {
+    "codigo": "1101",
+    "nombre": "Enrique Depto",
+    "barrio": "Belgrano",
+    "direccion": "Arcos 2825, piso 4 depto 401 ",
+    "tarifaLimpiezaUSD": 30,
+    "icalAirbnb": "https://www.airbnb.com.ar/calendar/ical/887615210748428386.ics?t=68e35abdab4e442485b2124a357be1ab",
+    "icalBooking": null,
+    "icalVrbo": null
+  },
+  {
+    "codigo": "1102",
+    "nombre": "Esteban Depto",
+    "barrio": "Las Cañitas",
+    "direccion": "San Benito de Palermo 1591, piso 10 depto A",
+    "tarifaLimpiezaUSD": 30,
+    "icalAirbnb": "https://www.airbnb.com.ar/calendar/ical/21824755.ics?t=fb8b2c497e774ca98ebeaf628cf900c5",
+    "icalBooking": "https://ical.booking.com/v1/export?t=21c660b7-1038-4cb3-bca3-a4f3aa749eb3",
+    "icalVrbo": null
+  },
+  {
+    "codigo": "1103",
+    "nombre": "Adriana Depto",
+    "barrio": "Las Cañitas",
+    "direccion": "Migueletes 1268, piso 6 depto C",
+    "tarifaLimpiezaUSD": 30,
+    "icalAirbnb": "https://www.airbnb.com.ar/calendar/ical/1044982505206747047.ics?t=15cdd9996057451ebca858c853d4e531",
+    "icalBooking": null,
+    "icalVrbo": null
+  },
+  {
+    "codigo": "1104",
+    "nombre": "Luchi Depto",
+    "barrio": "Martinez",
+    "direccion": "Remedios de Escalada 2350, Planta Baja, departamento A",
+    "tarifaLimpiezaUSD": 40,
+    "icalAirbnb": "https://www.airbnb.com.ar/calendar/ical/928446597786218982.ics?t=a8261d26955142d18d5a451147a67be4",
+    "icalBooking": null,
+    "icalVrbo": null
+  },
+  {
+    "codigo": "1105",
+    "nombre": "Cynthia Depto",
+    "barrio": "Nuñez",
+    "direccion": "Manzanares 2355, piso 1 depto E",
+    "tarifaLimpiezaUSD": 30,
+    "icalAirbnb": "https://www.airbnb.com.ar/calendar/ical/32640475.ics?t=aff05f0c0cd34a1a89084f162cea180b",
+    "icalBooking": null,
+    "icalVrbo": null
+  },
+  {
+    "codigo": "1106",
+    "nombre": "Vicky Depto.",
+    "barrio": "Nuñez",
+    "direccion": "Quesada 1575, piso 2 depto A",
+    "tarifaLimpiezaUSD": 40,
+    "icalAirbnb": "https://www.airbnb.com.ar/calendar/ical/30185075.ics?t=359d8bd57b3d441e848aa16a7540d9f6",
+    "icalBooking": null,
+    "icalVrbo": null
+  },
+  {
+    "codigo": "1107",
+    "nombre": "Malena Depto",
+    "barrio": "Palermo",
+    "direccion": "Guatemala 4290, piso 2 depto B",
+    "tarifaLimpiezaUSD": 30,
+    "icalAirbnb": "https://www.airbnb.com.ar/calendar/ical/837627166687562861.ics?t=3e0b36dd814e463a844f436656a9066f",
+    "icalBooking": null,
+    "icalVrbo": null
+  },
+  {
+    "codigo": "1108",
+    "nombre": "Mónica Depto",
+    "barrio": "Palermo",
+    "direccion": "Guemes 3355, piso 1906",
+    "tarifaLimpiezaUSD": 70,
+    "icalAirbnb": "https://www.airbnb.com.ar/calendar/ical/863043692453810485.ics?t=ffd53242a7d24a92bb664aca0d55aa63",
+    "icalBooking": null,
+    "icalVrbo": "http://www.vrbo.com/icalendar/5d7ab067b63d4af0bbb796212ecd573a.ics?nonTentative"
+  },
+  {
+    "codigo": "1109",
+    "nombre": "Karina Depto",
+    "barrio": "Palermo",
+    "direccion": "Gorriti 4050, piso 5 08",
+    "tarifaLimpiezaUSD": 30,
+    "icalAirbnb": "https://www.airbnb.com.ar/calendar/ical/1094275280284964412.ics?t=ce264bed581647ecbaec77a763667378",
+    "icalBooking": null,
+    "icalVrbo": null
+  },
+  {
+    "codigo": "1110",
+    "nombre": "Beto Depto",
+    "barrio": "Palermo",
+    "direccion": "Gorriti 4050, piso 5 09",
+    "tarifaLimpiezaUSD": 30,
+    "icalAirbnb": "https://www.airbnb.com.ar/calendar/ical/1092228870442054841.ics?t=46bba302e0414ba7846d2115d5a4f796",
+    "icalBooking": null,
+    "icalVrbo": null
+  },
+  {
+    "codigo": "1111",
+    "nombre": "Pablo Depto",
+    "barrio": "Palermo",
+    "direccion": "Scalabrini Ortiz 1825, piso 7 depto B",
+    "tarifaLimpiezaUSD": 30,
+    "icalAirbnb": "https://www.airbnb.com.ar/calendar/ical/28279211.ics?t=594dc3af152543dcbed9a5425f5ee93f",
+    "icalBooking": "https://ical.booking.com/v1/export?t=d8abeea3-06dc-4285-92ce-6635b86c885f",
+    "icalVrbo": null
+  },
+  {
+    "codigo": "1112",
+    "nombre": "Fede Depto",
+    "barrio": "Palermo",
+    "direccion": "Alvarez Thomas 46, piso 7 depto F",
+    "tarifaLimpiezaUSD": 40,
+    "icalAirbnb": "https://www.airbnb.com.ar/calendar/ical/681653218986889245.ics?t=34fce66428f7415a93e5798454843686",
+    "icalBooking": null,
+    "icalVrbo": null
+  },
+  {
+    "codigo": "1113",
+    "nombre": "Mariela Depto",
+    "barrio": "Once",
+    "direccion": "Avenida Corrientes 2164, 13 depto E",
+    "tarifaLimpiezaUSD": 60,
+    "icalAirbnb": "https://www.airbnb.com.ar/calendar/ical/1512805306095062426.ics?t=4ae9a8e30e2748b7881716ef949c0b2d",
+    "icalBooking": null,
+    "icalVrbo": null
+  },
+  {
+    "codigo": "1114",
+    "nombre": "Vero Depto",
+    "barrio": "Palermo",
+    "direccion": "Cabello 3174, piso 4 depto C",
+    "tarifaLimpiezaUSD": 30,
+    "icalAirbnb": "https://www.airbnb.com.ar/calendar/ical/1468357603812907205.ics?t=ba7e4bae590940958e3e10fcf362aac2",
+    "icalBooking": null,
+    "icalVrbo": null
+  },
+  {
+    "codigo": "1115",
+    "nombre": "Esteban 2 Depto",
+    "barrio": "Chacarita",
+    "direccion": "Dorrego 946, piso 7 depto C",
+    "tarifaLimpiezaUSD": 30,
+    "icalAirbnb": "https://www.airbnb.com.ar/calendar/ical/1387903493172999502.ics?t=847597c3c39e4cfaa811406be9490ca9",
+    "icalBooking": "https://ical.booking.com/v1/export?t=1f349969-78e5-421a-b98d-8dfe9542e04d",
+    "icalVrbo": null
+  },
+  {
+    "codigo": "1116",
+    "nombre": "Darrul Depto",
+    "barrio": "Palermo",
+    "direccion": "Coronel Niceto Vega 5720, piso 206",
+    "tarifaLimpiezaUSD": 60,
+    "icalAirbnb": "https://www.airbnb.com.ar/calendar/ical/1384060864037089299.ics?t=84077cd412f84284a708fe55d800d0c9",
+    "icalBooking": null,
+    "icalVrbo": null
+  },
+  {
+    "codigo": "1117",
+    "nombre": "Majo Depto",
+    "barrio": "Palermo",
+    "direccion": "Arévalo 2357, piso 4 depto 21",
+    "tarifaLimpiezaUSD": 30,
+    "icalAirbnb": "https://www.airbnb.com.ar/calendar/ical/1419666312139209117.ics?t=46da6f20426e454d89f0390e9da351c3",
+    "icalBooking": null,
+    "icalVrbo": null
+  },
+  {
+    "codigo": "1118",
+    "nombre": "Raul Depto",
+    "barrio": "Palermo",
+    "direccion": "Humboldt 1428, piso 4 depto B",
+    "tarifaLimpiezaUSD": 30,
+    "icalAirbnb": "https://www.airbnb.com.ar/calendar/ical/1618179300154009803.ics?t=871fc665e1004b7287f49dd29cddc33d",
+    "icalBooking": null,
+    "icalVrbo": null
+  },
+  {
+    "codigo": "1119",
+    "nombre": "Estefania Depto",
+    "barrio": "Belgrano",
+    "direccion": "Céspedes 2459, piso 7 depto F",
+    "tarifaLimpiezaUSD": 30,
+    "icalAirbnb": "https://www.airbnb.com.ar/calendar/ical/32513118.ics?t=17545dbeb9864966a800acea5a75ea52",
+    "icalBooking": null,
+    "icalVrbo": null
+  },
+  {
+    "codigo": "1127",
+    "nombre": "Raul Depto 2",
+    "barrio": "Palermo",
+    "direccion": "Humboldt 1428, piso 3 depto B",
+    "tarifaLimpiezaUSD": 30,
+    "icalAirbnb": "https://www.airbnb.com.ar/calendar/ical/1697100898886177059.ics?t=9c49946f86e14111a6e2ac6db09b298b",
+    "icalBooking": null,
+    "icalVrbo": null
+  },
+  {
+    "codigo": "1128",
+    "nombre": "Ruiz Huidobro",
+    "barrio": "Saavedra",
+    "direccion": "Ruiz Huidobro 3078, Puerta B",
+    "tarifaLimpiezaUSD": 40,
+    "icalAirbnb": "https://www.airbnb.com.ar/calendar/ical/54031856.ics?t=60f8f455bece4bd8acfb30e957d00adb",
+    "icalBooking": null,
+    "icalVrbo": null
+  }
+]

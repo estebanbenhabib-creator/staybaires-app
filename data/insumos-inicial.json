@@ -1,0 +1,6 @@
+[
+  { "id": "detergente-ropa", "producto": "Detergente ropa", "categoria": "lavanderia", "ubicacion": "Deposito central", "stockActual": 2, "stockMinimo": 5 },
+  { "id": "sabanas-queen", "producto": "Sabanas queen", "categoria": "limpieza", "ubicacion": "Rotacion por depto", "stockActual": 12, "stockMinimo": 6 },
+  { "id": "papel-higienico", "producto": "Papel higienico", "categoria": "limpieza", "ubicacion": "Deposito central", "stockActual": 20, "stockMinimo": 10 },
+  { "id": "toallas", "producto": "Toallas", "categoria": "limpieza", "ubicacion": "Rotacion por depto", "stockActual": 8, "stockMinimo": 10 }
+]

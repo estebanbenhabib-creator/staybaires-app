@@ -1,0 +1,12 @@
+{
+  "name": "staybaires-app",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Gestion de limpieza, calendario, pagos e insumos de Staybaires",
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@netlify/blobs": "^7.0.0"
+  }
+}
