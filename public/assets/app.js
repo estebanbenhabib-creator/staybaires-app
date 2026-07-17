@@ -3,11 +3,11 @@
 
 const API = "/api";
 const ICONS = {
-  calendario: "📅", tareas: "✅", empleadas: "👥", pagos: "💵",
+  hoy: "🏠", calendario: "📅", tareas: "✅", empleadas: "👥", pagos: "💵",
   insumos: "📦", lavanderia: "🧺", mispagos: "💵",
 };
 const TITLES = {
-  calendario: "Calendario", tareas: "Tareas", empleadas: "Empleadas",
+  hoy: "Hoy", calendario: "Calendario", tareas: "Tareas", empleadas: "Empleadas",
   pagos: "Pagos", insumos: "Insumos", lavanderia: "Lavanderia", mispagos: "Mis pagos",
 };
 
@@ -192,6 +192,11 @@ function tabsForSession() {
   const roleConf = CONFIG.roles[SESSION.role];
   const tabs = roleConf.tabs.slice();
   if (canManageTasks() && !tabs.includes("calendario")) tabs.unshift("calendario");
+  // "Hoy" siempre primero, es la pantalla de inicio de todos los roles.
+  if (tabs.includes("hoy")) {
+    tabs.splice(tabs.indexOf("hoy"), 1);
+    tabs.unshift("hoy");
+  }
   return tabs;
 }
 
@@ -245,6 +250,7 @@ function setScope(text) {
 function renderTab(tab) {
   setMain(`<div class="empty-state">Cargando...</div>`);
   const handlers = {
+    hoy: renderHoy,
     calendario: renderCalendario,
     tareas: renderTareas,
     empleadas: renderEmpleadas,
@@ -254,6 +260,119 @@ function renderTab(tab) {
     lavanderia: renderLavanderia,
   };
   (handlers[tab] || (() => setMain("")))();
+}
+
+// ---------- Hoy (inicio) ----------
+
+// Fecha de hoy en hora local (no UTC), para que "hoy" no se corra de dia
+// a la noche en Argentina (UTC-3).
+function todayISO() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+async function renderHoy() {
+  try {
+    const hoy = todayISO();
+    setScope(fmtDateHeader(hoy));
+    const manage = canManageTasks();
+
+    // Lavanderia (Lujan): su inicio son sus pedidos pendientes.
+    if (SESSION.role === "lavanderia") {
+      const pedidos = await fetchJSON(`${API}/lavanderia`);
+      const pend = pedidos.filter((p) => p.status !== "completado");
+      setMain(`
+        <p class="muted">Hola ${SESSION.name} · ${fmtDateHeader(hoy)}</p>
+        <div class="stat" style="margin-bottom:12px;"><p class="label">Pedidos pendientes</p><p class="value ${pend.length ? "warn" : ""}">${pend.length}</p></div>
+        ${
+          pend.length === 0
+            ? `<div class="empty-state">No tenes pedidos pendientes.</div>`
+            : pend
+                .map(
+                  (p) => `
+          <div class="card" style="margin-bottom:8px;">
+            <div class="card-row">
+              <div>
+                <p class="card-title">${p.tipo === "retiro" ? "Retirar" : "Entregar"} · ${p.propertyName || "-"}</p>
+                <p class="card-sub">${fmtDate(p.fecha)}</p>
+              </div>
+              <span class="badge amber">Pendiente</span>
+            </div>
+          </div>`
+                )
+                .join("")
+        }
+      `);
+      return;
+    }
+
+    const payload = await getTasks();
+    const limpiezasHoy = payload.tasks.filter((t) => t.date === hoy);
+    const checkinsHoy = (payload.checkins || []).filter((c) => c.date === hoy);
+    // Un depto con check-out Y check-in el mismo dia = limpieza urgente (entra
+    // huesped nuevo hoy mismo). Lo marcamos para que salte a la vista.
+    const entranHoy = new Set(checkinsHoy.map((c) => c.propertyCode));
+
+    const misLimpiezas = manage ? limpiezasHoy : limpiezasHoy.filter((t) => t.assignedTo === SESSION.employeeId);
+
+    const cleanCard = (t) => {
+      const sameDay = entranHoy.has(t.propertyCode);
+      const assignedLabel = t.assignedTo === "random" && t.assignedName ? `Random (${t.assignedName})` : employeeName(t.assignedTo);
+      return `
+      <div class="card" style="margin-bottom:8px;">
+        <div class="card-row">
+          <div>
+            <p class="card-title">${t.propertyName}</p>
+            <p class="card-sub">${t.direccion || t.barrio}</p>
+            ${manage ? `<p class="card-sub">${assignedLabel}</p>` : ""}
+          </div>
+          ${sameDay ? `<span class="badge red">Entra hoy</span>` : statusBadge(t.status)}
+        </div>
+        ${sameDay ? `<p class="card-sub" style="color:var(--red-fg); margin-top:6px;">⚡ Entra un huesped hoy: limpiar con prioridad.</p>` : ""}
+      </div>`;
+    };
+
+    let extras = "";
+    if (manage) {
+      const [insumos, pedidos] = await Promise.all([fetchJSON(`${API}/insumos`), fetchJSON(`${API}/lavanderia`)]);
+      const bajos = insumos.filter((i) => i.stockActual < i.stockMinimo);
+      const lavPend = pedidos.filter((p) => p.status !== "completado");
+      extras = `
+        <div class="stat-grid">
+          <div class="stat"><p class="label">Insumos bajos</p><p class="value ${bajos.length ? "warn" : ""}">${bajos.length}</p></div>
+          <div class="stat"><p class="label">Lavanderia pendiente</p><p class="value">${lavPend.length}</p></div>
+        </div>`;
+    }
+
+    setMain(`
+      <p class="muted">Hola ${SESSION.name} · ${fmtDateHeader(hoy)}</p>
+      ${extras}
+      <p class="section-label">${manage ? "Limpiezas de hoy" : "Tus limpiezas de hoy"} (${misLimpiezas.length})</p>
+      ${misLimpiezas.length === 0 ? `<div class="empty-state">No hay limpiezas para hoy.</div>` : misLimpiezas.map(cleanCard).join("")}
+      ${
+        manage
+          ? `<p class="section-label">Check-ins de hoy (${checkinsHoy.length})</p>
+        ${
+          checkinsHoy.length === 0
+            ? `<div class="empty-state">No hay llegadas hoy.</div>`
+            : checkinsHoy
+                .map(
+                  (c) => `
+          <div class="card" style="margin-bottom:8px;">
+            <div class="card-row">
+              <div><p class="card-title">${c.propertyName}</p><p class="card-sub">${c.direccion || c.barrio}</p></div>
+              ${platformBadge(c.platform)}
+            </div>
+          </div>`
+                )
+                .join("")
+        }`
+          : ""
+      }
+    `);
+  } catch (err) {
+    setMain(`<div class="empty-state">Error cargando el inicio: ${err.message}</div>`);
+  }
 }
 
 // ---------- Calendario ----------

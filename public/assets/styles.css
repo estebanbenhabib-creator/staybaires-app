@@ -154,6 +154,8 @@ main {
 }
 .stat .label { font-size: 12px; color: var(--text-secondary); margin: 0 0 4px; }
 .stat .value { font-size: 19px; font-weight: 700; margin: 0; }
+.stat .value.warn { color: var(--red-fg); }
+.section-label { font-size: 13px; font-weight: 600; margin: 16px 0 8px; color: var(--text-secondary); }
 
 .nav {
   position: fixed;

@@ -1,0 +1,12 @@
+# Local Netlify folder
+.netlify
+
+# Dependencias
+node_modules
+
+# Store local de dev (fallback de Netlify Blobs cuando se corre con `netlify dev`)
+.dev-blobs
+
+# Artefactos locales de `netlify dev` / tooling (no versionar)
+deno.lock
+package-lock.json

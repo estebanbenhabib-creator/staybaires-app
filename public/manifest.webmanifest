@@ -1,0 +1,26 @@
+{
+  "name": "Staybaires Limpieza",
+  "short_name": "Staybaires",
+  "description": "Gestion de limpieza, calendario, tareas, pagos e insumos de Staybaires.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f4f5f7",
+  "theme_color": "#37485e",
+  "lang": "es-AR",
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

@@ -1,17 +1,17 @@
 {
   "admin": {
     "label": "Admin",
-    "tabs": ["calendario", "tareas", "empleadas", "pagos", "insumos"],
+    "tabs": ["hoy", "calendario", "tareas", "empleadas", "pagos", "insumos"],
     "scope": "todas"
   },
   "empleada": {
     "label": "Empleada",
-    "tabs": ["tareas", "insumos"],
+    "tabs": ["hoy", "tareas", "insumos"],
     "scope": "propia"
   },
   "lavanderia": {
     "label": "Lavanderia",
-    "tabs": ["lavanderia", "mispagos"],
+    "tabs": ["hoy", "lavanderia", "mispagos"],
     "scope": "propia"
   }
 }
