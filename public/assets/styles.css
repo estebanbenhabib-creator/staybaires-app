@@ -156,6 +156,31 @@ main {
 .stat .value { font-size: 19px; font-weight: 700; margin: 0; }
 .stat .value.warn { color: var(--red-fg); }
 .section-label { font-size: 13px; font-weight: 600; margin: 16px 0 8px; color: var(--text-secondary); }
+.section-label.today { color: var(--blue-fg); }
+
+/* Calendario: toggle Lista/Mes + grilla mensual */
+.cal-bar { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 10px; }
+.cal-toggle { display: inline-flex; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+.cal-toggle button { border: none; background: transparent; padding: 7px 18px; font-size: 13px; color: var(--text-secondary); cursor: pointer; }
+.cal-toggle button.on { background: var(--navy); color: #fff; }
+.cal-monthnav { display: flex; justify-content: center; align-items: center; gap: 20px; padding: 4px 0 10px; font-size: 15px; font-weight: 600; }
+.cal-monthnav button { border: 1px solid var(--border); background: var(--surface); border-radius: 8px; width: 32px; height: 32px; font-size: 18px; line-height: 1; color: var(--text-secondary); cursor: pointer; }
+.cal-weekhead { display: grid; grid-template-columns: repeat(7, 1fr); }
+.cal-weekhead span { text-align: center; font-size: 11px; color: var(--text-muted); padding: 2px 0; }
+.cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; margin-bottom: 8px; }
+.cal-cell { min-height: 44px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; font-size: 13px; color: var(--text); background: var(--surface); border: 1px solid transparent; border-radius: 8px; cursor: pointer; }
+.cal-cell.mut { color: var(--text-muted); background: transparent; cursor: default; opacity: 0.45; }
+.cal-cell.today { border-color: var(--blue); }
+.cal-cell.sel { background: var(--blue-bg); border-color: var(--blue-fg); color: var(--blue-fg); font-weight: 700; }
+.cal-dot { min-width: 16px; height: 16px; padding: 0 3px; border-radius: 9px; font-size: 10px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
+.cal-dot.blue { background: var(--blue-bg); color: var(--blue-fg); }
+.cal-dot.green { background: var(--green-bg); color: var(--green-fg); }
+.cal-dot.red { background: var(--red-bg); color: var(--red-fg); }
+.cal-legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 11px; color: var(--text-secondary); margin-bottom: 6px; }
+.cal-legend i { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 5px; }
+.cal-legend i.blue { background: var(--blue-fg); }
+.cal-legend i.green { background: var(--green-fg); }
+.cal-legend i.red { background: var(--red-fg); }
 
 .nav {
   position: fixed;

@@ -15,6 +15,11 @@ let SESSION = safeParse(localStorage.getItem("sb-session"));
 let CONFIG = null;
 let CURRENT_TAB = null;
 let CACHE = {};
+// Estado del Calendario: vista "lista" (default) o "mes", mes visible y dia
+// seleccionado en la vista mensual. La vista elegida se recuerda en el dispositivo.
+let CALVIEW = localStorage.getItem("sb-calview") === "mes" ? "mes" : "lista";
+let CALMONTH = null; // "YYYY-MM"
+let CALSELDAY = null; // "YYYY-MM-DD"
 
 function safeParse(s) { try { return JSON.parse(s); } catch { return null; } }
 
@@ -384,21 +389,180 @@ async function getTasks(force) {
   return CACHE.tasksPayload;
 }
 
+const MESES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
+
+function isoPlusDays(iso, days) {
+  const [y, m, d] = iso.split("-").map(Number);
+  const dt = new Date(y, m - 1, d + days);
+  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
+}
+
+function monthLabel(ym) {
+  const [y, m] = ym.split("-").map(Number);
+  return `${MESES[m - 1]} ${y}`;
+}
+
+function addMonth(ym, delta) {
+  const [y, m] = ym.split("-").map(Number);
+  const dt = new Date(y, m - 1 + delta, 1);
+  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}`;
+}
+
+// Indexa checkouts (limpiezas) y checkins por fecha, y marca como "urgente"
+// los checkouts que tienen ademas un checkin ese mismo dia en el mismo depto
+// (sale un huesped y entra otro: hay que limpiar con prioridad).
+function buildDayIndex(payload) {
+  const idx = new Map();
+  const get = (d) => {
+    if (!idx.has(d)) idx.set(d, { outs: [], ins: [] });
+    return idx.get(d);
+  };
+  for (const t of payload.tasks) get(t.date).outs.push(t);
+  for (const c of payload.checkins || []) get(c.date).ins.push(c);
+  const urgentIds = new Set();
+  for (const [, info] of idx) {
+    const inCodes = new Set(info.ins.map((c) => c.propertyCode));
+    for (const t of info.outs) if (inCodes.has(t.propertyCode)) urgentIds.add(t.id);
+  }
+  return { idx, urgentIds };
+}
+
+function firstEventDayOfMonth(idx, ym) {
+  const dias = Array.from(idx.keys())
+    .filter((d) => d.startsWith(ym))
+    .sort();
+  return dias[0] || null;
+}
+
+// Tarjeta de un evento (checkout o checkin), compartida por la lista y por el
+// detalle de la vista mensual. Borde de color por tipo y badge de estado.
+function eventCardHTML(t, ctx) {
+  const esCheckout = t.type !== "checkin";
+  const urgent = esCheckout && ctx.urgentIds.has(t.id);
+  const borde = !esCheckout ? "#639922" : urgent ? "#e24b4a" : "#378add";
+  const assignedLabel = esCheckout
+    ? t.assignedTo === "random" && t.assignedName
+      ? `Random (${t.assignedName})`
+      : employeeName(t.assignedTo)
+    : `Llega huesped · ${platformBadge(t.platform)}`;
+  const badge = !esCheckout ? `<span class="badge green">Llega</span>` : urgent ? `<span class="badge red">Urgente</span>` : statusBadge(t.status);
+  return `
+    <div class="card" style="margin-bottom:8px; border-left:3px solid ${borde};">
+      <div class="card-row">
+        <div>
+          <p class="card-title">${t.propertyName}</p>
+          <p class="card-sub">${t.direccion || t.barrio}</p>
+          <p class="card-sub">${urgent ? `<span style="color:var(--red-fg);">⚡ Sale y entra hoy · </span>` : ""}${assignedLabel}</p>
+        </div>
+        ${badge}
+      </div>
+      ${
+        esCheckout && ctx.puedeAsignar
+          ? `<div style="margin-top:8px;">
+              <select class="badge-select" data-reassign-cal="${t.id}">
+                ${ctx.cleaners.map((c) => `<option value="${c.id}" ${c.id === t.assignedTo ? "selected" : ""}>${c.nombre}</option>`).join("")}
+              </select>
+            </div>`
+          : ""
+      }
+    </div>`;
+}
+
+function calListaHTML(payload, ctx) {
+  const today = todayISO();
+  const hasta = isoPlusDays(today, 45);
+  const combinado = [...payload.tasks, ...(payload.checkins || [])].sort(
+    (a, b) => a.date.localeCompare(b.date) || (a.type === b.type ? 0 : a.type === "checkin" ? -1 : 1)
+  );
+  const upcoming = combinado.filter((t) => t.date >= today && t.date <= hasta);
+
+  const grupos = [];
+  let g = null;
+  for (const t of upcoming) {
+    if (!g || g.date !== t.date) {
+      g = { date: t.date, items: [] };
+      grupos.push(g);
+    }
+    g.items.push(t);
+  }
+  if (grupos.length === 0) return `<div class="empty-state">No hay check-ins ni check-outs en los proximos 45 dias.</div>`;
+  return grupos
+    .map(
+      (g) => `
+      <p class="section-label ${g.date === today ? "today" : ""}">${g.date === today ? "Hoy · " : ""}${fmtDateHeader(g.date)}</p>
+      ${g.items.map((t) => eventCardHTML(t, ctx)).join("")}`
+    )
+    .join("");
+}
+
+function calMesHTML(idx, ctx) {
+  const today = todayISO();
+  if (!CALMONTH) CALMONTH = today.slice(0, 7);
+  if (!CALSELDAY || CALSELDAY.slice(0, 7) !== CALMONTH) {
+    CALSELDAY = today.slice(0, 7) === CALMONTH ? today : firstEventDayOfMonth(idx, CALMONTH) || `${CALMONTH}-01`;
+  }
+
+  const [Y, M] = CALMONTH.split("-").map(Number);
+  const startCol = (new Date(Y, M - 1, 1).getDay() + 6) % 7; // lunes = 0
+  const diasMes = new Date(Y, M, 0).getDate();
+  const diasPrev = new Date(Y, M - 1, 0).getDate();
+
+  const cells = [];
+  for (let i = startCol - 1; i >= 0; i--) cells.push({ day: diasPrev - i, iso: null });
+  for (let d = 1; d <= diasMes; d++) cells.push({ day: d, iso: `${CALMONTH}-${String(d).padStart(2, "0")}` });
+  let nd = 1;
+  while (cells.length % 7 !== 0) cells.push({ day: nd++, iso: null });
+
+  const wk = ["L", "M", "M", "J", "V", "S", "D"].map((w) => `<span>${w}</span>`).join("");
+  const grid = cells
+    .map((c) => {
+      if (!c.iso) return `<div class="cal-cell mut">${c.day}</div>`;
+      const info = idx.get(c.iso) || { outs: [], ins: [] };
+      const urgent = info.outs.some((t) => ctx.urgentIds.has(t.id));
+      let dot = "";
+      if (urgent) dot = `<span class="cal-dot red">!</span>`;
+      else if (info.outs.length) dot = `<span class="cal-dot blue">${info.outs.length}</span>`;
+      else if (info.ins.length) dot = `<span class="cal-dot green">${info.ins.length}</span>`;
+      const cls = ["cal-cell"];
+      if (c.iso === today) cls.push("today");
+      if (c.iso === CALSELDAY) cls.push("sel");
+      return `<div class="${cls.join(" ")}" data-calday="${c.iso}">${c.day}${dot}</div>`;
+    })
+    .join("");
+
+  const info = idx.get(CALSELDAY) || { outs: [], ins: [] };
+  const nOuts = info.outs.length;
+  const detalle =
+    info.outs.length || info.ins.length
+      ? [...info.outs, ...info.ins].map((t) => eventCardHTML(t, ctx)).join("")
+      : `<div class="empty-state">Sin check-ins ni check-outs ese dia.</div>`;
+
+  return `
+    <div class="cal-monthnav">
+      <button data-calnav="prev" aria-label="Mes anterior">‹</button>
+      <span>${monthLabel(CALMONTH)}</span>
+      <button data-calnav="next" aria-label="Mes siguiente">›</button>
+    </div>
+    <div class="cal-weekhead">${wk}</div>
+    <div class="cal-grid">${grid}</div>
+    <div class="cal-legend">
+      <span><i class="blue"></i>Limpieza</span>
+      <span><i class="green"></i>Llegada</span>
+      <span><i class="red"></i>Urgente</span>
+    </div>
+    <p class="section-label">${fmtDateHeader(CALSELDAY)}${nOuts ? ` · ${nOuts} limpieza${nOuts > 1 ? "s" : ""}` : ""}</p>
+    ${detalle}`;
+}
+
 async function renderCalendario() {
   try {
     const payload = await getTasks();
-    const today = new Date().toISOString().slice(0, 10);
-    const horizonte = new Date();
-    horizonte.setDate(horizonte.getDate() + 45);
-    const horizonteISO = horizonte.toISOString().slice(0, 10);
-
-    const combinado = [...payload.tasks, ...(payload.checkins || [])].sort((a, b) => a.date.localeCompare(b.date) || (a.type === b.type ? 0 : a.type === "checkin" ? -1 : 1));
-    const upcoming = combinado.filter((t) => t.date >= today && t.date <= horizonteISO);
     setScope(`${(CONFIG.properties || []).length} propiedades`);
+    const cleaners = (CONFIG.employees || []).filter((e) => e.rol === "empleada");
+    const { idx, urgentIds } = buildDayIndex(payload);
+    const ctx = { puedeAsignar: canManageTasks(), cleaners, urgentIds };
 
-    const syncInfo = payload.lastSync
-      ? `Ultimo sync: ${new Date(payload.lastSync).toLocaleString("es-AR")}`
-      : "Todavia no sincronizo";
+    const syncInfo = payload.lastSync ? `Ultimo sync: ${new Date(payload.lastSync).toLocaleString("es-AR")}` : "Todavia no sincronizo";
 
     const errores = payload.syncErrors && payload.syncErrors.length ? payload.syncErrors : [];
     const erroresHTML = errores.length
@@ -413,64 +577,19 @@ async function renderCalendario() {
         </div>`
       : "";
 
-    const cleaners = (CONFIG.employees || []).filter((e) => e.rol === "empleada");
-    const puedeAsignar = canManageTasks();
-
-    // agrupar por fecha, ya vienen ordenadas por fecha desde el backend
-    const grupos = [];
-    let grupoActual = null;
-    for (const t of upcoming) {
-      if (!grupoActual || grupoActual.date !== t.date) {
-        grupoActual = { date: t.date, items: [] };
-        grupos.push(grupoActual);
-      }
-      grupoActual.items.push(t);
-    }
+    const body = CALVIEW === "mes" ? calMesHTML(idx, ctx) : calListaHTML(payload, ctx);
 
     setMain(`
-      <p class="muted">${syncInfo} · sync automatico diario de Airbnb / Booking / Vrbo</p>
-      <div class="refresh-row"><button class="btn-secondary" data-refresh>Actualizar ahora</button></div>
+      <p class="muted">${syncInfo} · sync automatico diario</p>
+      <div class="cal-bar">
+        <div class="cal-toggle">
+          <button class="${CALVIEW === "lista" ? "on" : ""}" data-calview="lista">Lista</button>
+          <button class="${CALVIEW === "mes" ? "on" : ""}" data-calview="mes">Mes</button>
+        </div>
+        <button class="btn-secondary" data-refresh>Actualizar</button>
+      </div>
       ${erroresHTML}
-      ${
-        grupos.length === 0
-          ? `<div class="empty-state">No hay check-ins ni check-outs en los proximos 45 dias.</div>`
-          : grupos
-              .map(
-                (g) => `
-        <p style="font-size:13px; font-weight:600; margin:16px 0 8px; color:var(--text-secondary);">${fmtDateHeader(g.date)}</p>
-        ${g.items
-          .map((t) => {
-            const esCheckout = t.type !== "checkin";
-            const assignedLabel = esCheckout
-              ? t.assignedTo === "random" && t.assignedName
-                ? `Random (${t.assignedName})`
-                : employeeName(t.assignedTo)
-              : `Llega huesped · ${platformBadge(t.platform)}`;
-            return `
-        <div class="card" style="margin-bottom:8px;">
-          <div class="card-row">
-            <div>
-              <p class="card-title">${t.propertyName}</p>
-              <p class="card-sub">${t.direccion || t.barrio}</p>
-              <p class="card-sub">${assignedLabel}</p>
-            </div>
-            ${eventTypeBadge(t.type)}
-          </div>
-          ${
-            esCheckout && puedeAsignar
-              ? `<div style="margin-top:8px;">
-                  <select class="badge-select" data-reassign-cal="${t.id}">
-                    ${cleaners.map((c) => `<option value="${c.id}" ${c.id === t.assignedTo ? "selected" : ""}>${c.nombre}</option>`).join("")}
-                  </select>
-                </div>`
-              : ""
-          }
-        </div>`;
-          })
-          .join("")}`
-              )
-              .join("")
-      }
+      ${body}
     `);
 
     document.querySelector("[data-refresh]").onclick = async () => {
@@ -483,6 +602,29 @@ async function renderCalendario() {
       }
       renderCalendario();
     };
+
+    document.querySelectorAll("[data-calview]").forEach((btn) => {
+      btn.onclick = () => {
+        CALVIEW = btn.getAttribute("data-calview");
+        localStorage.setItem("sb-calview", CALVIEW);
+        renderCalendario();
+      };
+    });
+
+    document.querySelectorAll("[data-calnav]").forEach((btn) => {
+      btn.onclick = () => {
+        CALMONTH = addMonth(CALMONTH || todayISO().slice(0, 7), btn.getAttribute("data-calnav") === "prev" ? -1 : 1);
+        CALSELDAY = null;
+        renderCalendario();
+      };
+    });
+
+    document.querySelectorAll("[data-calday]").forEach((cell) => {
+      cell.onclick = () => {
+        CALSELDAY = cell.getAttribute("data-calday");
+        renderCalendario();
+      };
+    });
 
     document.querySelectorAll("[data-reassign-cal]").forEach((sel) => {
       sel.onchange = async () => {

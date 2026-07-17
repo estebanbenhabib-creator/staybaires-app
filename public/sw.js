@@ -1,9 +1,12 @@
-// Service worker minimo: hace la app "instalable" (icono en el telefono) y
-// cachea el shell estatico para que abra rapido y aunque haya mala senal.
-// OJO: nunca cachea /api/* — esos datos (tareas, pagos, insumos) siempre
-// tienen que venir frescos del servidor.
+// Service worker: hace la app "instalable" (icono en el telefono) y da un
+// fallback offline, SIN quedarse pegado a una version vieja del codigo.
+//
+// Estrategia network-first para todo lo del mismo origen: si hay red, siempre
+// sirve la version fresca (asi los deploys se ven al instante) y de paso la
+// guarda en cache; si no hay red, cae a lo ultimo cacheado. Los datos (/api/*)
+// nunca pasan por el SW: van directo a la red.
 
-const CACHE = "staybaires-v1";
+const CACHE = "staybaires-v2";
 const SHELL = [
   "/",
   "/index.html",
@@ -30,30 +33,21 @@ self.addEventListener("fetch", (event) => {
   if (request.method !== "GET") return;
 
   const url = new URL(request.url);
+  // Datos y funciones: siempre a la red, sin tocar el SW.
+  if (url.pathname.startsWith("/api/") || url.pathname.startsWith("/.netlify/")) return;
+  // Otros origenes (CDNs, etc.): sin intervencion.
+  if (url.origin !== self.location.origin) return;
 
-  // Datos: siempre a la red, sin cache.
-  if (url.pathname.startsWith("/api/") || url.pathname.startsWith("/.netlify/")) {
-    return; // dejar que el navegador lo maneje normalmente
-  }
-
-  // Navegaciones: red primero, si falla cae al index cacheado (offline).
-  if (request.mode === "navigate") {
-    event.respondWith(fetch(request).catch(() => caches.match("/index.html")));
-    return;
-  }
-
-  // Estaticos del mismo origen: cache primero, si no esta va a la red y guarda.
-  if (url.origin === self.location.origin) {
-    event.respondWith(
-      caches.match(request).then(
-        (cached) =>
-          cached ||
-          fetch(request).then((res) => {
-            const copy = res.clone();
-            caches.open(CACHE).then((c) => c.put(request, copy));
-            return res;
-          })
+  // Mismo origen (shell y assets): red primero, cache como respaldo offline.
+  event.respondWith(
+    fetch(request)
+      .then((res) => {
+        const copy = res.clone();
+        caches.open(CACHE).then((c) => c.put(request, copy));
+        return res;
+      })
+      .catch(() =>
+        caches.match(request).then((cached) => cached || (request.mode === "navigate" ? caches.match("/index.html") : Response.error()))
       )
-    );
-  }
+  );
 });
