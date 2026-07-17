@@ -179,6 +179,22 @@ main {
 .modal input, .modal select { width: 100%; box-sizing: border-box; border: 1px solid var(--border); border-radius: var(--radius); padding: 9px 10px; font-size: 14px; background: var(--surface); }
 .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 18px; }
 
+/* Pagos / liquidacion */
+.pay-dates { display: flex; gap: 8px; margin-bottom: 8px; }
+.pay-dates label { flex: 1; display: flex; flex-direction: column; font-size: 12px; font-weight: 600; color: var(--text-secondary); gap: 4px; }
+.pay-dates input { border: 1px solid var(--border); border-radius: var(--radius); padding: 8px 10px; font-size: 14px; background: var(--surface); }
+.pay-presets { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+.pay-breakdown { margin-top: 8px; border-top: 1px solid var(--border); padding-top: 8px; }
+.pay-row { display: flex; justify-content: space-between; gap: 10px; font-size: 13px; color: var(--text-secondary); padding: 3px 0; }
+.pay-row span:last-child { font-weight: 600; color: var(--text); white-space: nowrap; }
+.pay-actions { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+.aj-label { display: block; font-size: 12px; font-weight: 600; color: var(--text-secondary); margin: 10px 0 4px; }
+.aj-label:first-child { margin-top: 0; }
+.card > input { width: 100%; box-sizing: border-box; border: 1px solid var(--border); border-radius: var(--radius); padding: 9px 10px; font-size: 14px; background: var(--surface); }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { display: inline-flex; align-items: center; gap: 6px; background: var(--bg); border: 1px solid var(--border); border-radius: 14px; padding: 4px 10px; font-size: 12px; }
+.chip button { background: none; border: none; color: var(--red-fg); cursor: pointer; font-size: 12px; padding: 0; }
+
 /* Calendario: toggle Lista/Mes + grilla mensual */
 .cal-bar { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 10px; }
 .cal-toggle { display: inline-flex; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }

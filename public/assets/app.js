@@ -23,6 +23,11 @@ let CACHE = {};
 let CALVIEW = localStorage.getItem("sb-calview") === "mes" ? "mes" : "lista";
 let CALMONTH = null; // "YYYY-MM"
 let CALSELDAY = null; // "YYYY-MM-DD"
+// Estado de Pagos: rango de la liquidacion y sub-vista (liquidacion / ajustes).
+let PAGOS_FROM = null;
+let PAGOS_TO = null;
+let PAGOS_VIEW = "liquidacion";
+let FERIADOS_EDIT = [];
 
 function safeParse(s) { try { return JSON.parse(s); } catch { return null; } }
 
@@ -862,19 +867,18 @@ async function renderTareas() {
 
 async function renderEmpleadas() {
   try {
-    const [payload, paymentsData] = await Promise.all([getTasks(), fetchJSON(`${API}/payments`)]);
+    const desde = todayISO().slice(0, 8) + "01";
+    const paymentsData = await fetchJSON(`${API}/payments?from=${desde}&to=${todayISO()}`);
     setScope(`${CONFIG.employees.length} personas`);
     const jerarquiaLabel = { principal: "Principal", secundaria: "Secundaria", rotativa: "Rotativa" };
     const jerarquiaBadge = { principal: "blue", secundaria: "teal", rotativa: "amber" };
 
     const cleaners = CONFIG.employees.filter((e) => e.rol === "empleada");
     const lavanderia = CONFIG.employees.filter((e) => e.rol === "lavanderia");
-
-    function summaryFor(id) {
-      return paymentsData.summary.find((s) => s.employeeId === id);
-    }
+    const summaryFor = (id) => paymentsData.summary.find((s) => s.employeeId === id);
 
     setMain(`
+      <p class="muted">Días trabajados y total de este mes</p>
       ${cleaners
         .map((e) => {
           const s = summaryFor(e.id);
@@ -883,11 +887,11 @@ async function renderEmpleadas() {
           <div class="card-row">
             <div>
               <p class="card-title">${e.nombre}</p>
-              <p class="card-sub">Limpieza · $${e.tarifaPorDia?.toLocaleString("es-AR") || "-"}/dia</p>
+              <p class="card-sub">Limpieza · $${e.tarifaPorDia?.toLocaleString("es-AR") || "-"}/dia base</p>
             </div>
             <span class="badge ${jerarquiaBadge[e.jerarquia] || "blue"}">${jerarquiaLabel[e.jerarquia] || ""}</span>
           </div>
-          <p class="card-sub" style="margin-top:8px;">${s ? `${s.totalDias} dias trabajados · ${fmtMoney(s.totalPago)}` : "Sin datos de pago todavia"}</p>
+          <p class="card-sub" style="margin-top:8px;">${s ? `${s.totalDias} días trabajados · ${fmtMoney(s.total)}` : "Sin datos todavia"}</p>
         </div>`;
         })
         .join("")}
@@ -910,27 +914,241 @@ async function renderEmpleadas() {
   }
 }
 
-// ---------- Pagos (admin) ----------
+// ---------- Pagos / Liquidacion (admin) ----------
+
+function payRow(label, monto) {
+  return `<div class="pay-row"><span>${label}</span><span>${fmtMoney(monto)}</span></div>`;
+}
+
+function payCardHTML(s) {
+  const rows = [payRow(`Días trabajados: ${s.totalDias} × ${fmtMoney(s.tarifaPorDia)}`, s.baseDias)];
+  if (s.valorDeptos) rows.push(payRow(`Deptos limpiados (${s.cantDeptos})`, s.valorDeptos));
+  if (s.viatico) rows.push(payRow(`Viáticos (${s.totalDias} día${s.totalDias !== 1 ? "s" : ""})`, s.viatico));
+  if (s.plusDomingo) rows.push(payRow(`Plus domingo (${s.domingos})`, s.plusDomingo));
+  if (s.plusFeriado) rows.push(payRow(`Plus feriado (${s.feriados})`, s.plusFeriado));
+  for (const it of s.items) {
+    rows.push(`<div class="pay-row"><span>${it.concepto} <button class="link-danger" data-del-item="${it.id}" style="padding:0 4px;">✕</button></span><span>${fmtMoney(it.monto)}</span></div>`);
+  }
+  return `
+    <div class="card">
+      <div class="card-row"><span class="card-title">${s.nombre}</span><span class="card-title">${fmtMoney(s.total)}</span></div>
+      <div class="pay-breakdown">${rows.join("")}</div>
+      <div class="pay-actions">
+        <button class="btn-secondary" data-add-item="${s.employeeId}">+ Agregar ítem</button>
+        <button class="btn-primary" data-wa="${s.employeeId}">Enviar por WhatsApp</button>
+      </div>
+    </div>`;
+}
+
+function buildWaMessage(s, from, to) {
+  const L = [`*Liquidación ${s.nombre}* — ${fmtDate(from)} al ${fmtDate(to)}`];
+  L.push(`Días trabajados: ${s.totalDias} × ${fmtMoney(s.tarifaPorDia)} = ${fmtMoney(s.baseDias)}`);
+  if (s.valorDeptos) L.push(`Deptos limpiados (${s.cantDeptos}): ${fmtMoney(s.valorDeptos)}`);
+  if (s.viatico) L.push(`Viáticos (${s.totalDias} día${s.totalDias !== 1 ? "s" : ""}): ${fmtMoney(s.viatico)}`);
+  if (s.plusDomingo) L.push(`Plus domingo (${s.domingos}): ${fmtMoney(s.plusDomingo)}`);
+  if (s.plusFeriado) L.push(`Plus feriado (${s.feriados}): ${fmtMoney(s.plusFeriado)}`);
+  for (const it of s.items) L.push(`${it.concepto}: ${fmtMoney(it.monto)}`);
+  L.push("");
+  L.push(`*TOTAL: ${fmtMoney(s.total)}*`);
+  return L.join("\n");
+}
+
+function openItemForm(employeeId, onDone) {
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+  const conceptos = ["Reembolso supermercado", "Artículos de limpieza", "Plus suciedad", "Viático extra", "Otro"];
+  overlay.innerHTML = `
+    <div class="modal">
+      <h3>Agregar ítem</h3>
+      <label>Concepto</label>
+      <select id="it-concepto">${conceptos.map((c) => `<option>${c}</option>`).join("")}</select>
+      <label>Detalle (opcional)</label>
+      <input type="text" id="it-detalle" placeholder="Ej: Migueletes 1268" />
+      <label>Monto</label>
+      <input type="number" id="it-monto" inputmode="numeric" placeholder="0" />
+      <label>Fecha</label>
+      <input type="date" id="it-date" value="${PAGOS_TO || todayISO()}" />
+      <div class="modal-actions">
+        <button class="btn-secondary" id="it-cancel">Cancelar</button>
+        <button class="btn-primary" id="it-save">Agregar</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  const close = () => overlay.remove();
+  overlay.onclick = (e) => { if (e.target === overlay) close(); };
+  overlay.querySelector("#it-cancel").onclick = close;
+  overlay.querySelector("#it-save").onclick = async () => {
+    const base = overlay.querySelector("#it-concepto").value;
+    const det = overlay.querySelector("#it-detalle").value.trim();
+    const monto = Number(overlay.querySelector("#it-monto").value);
+    const date = overlay.querySelector("#it-date").value;
+    if (!monto || !date) return toast("Completá monto y fecha");
+    const concepto = det ? `${base} (${det})` : base;
+    try {
+      await fetchJSON(`${API}/pay-items`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ employeeId, date, concepto, monto }) });
+      close();
+      toast("Ítem agregado");
+      onDone();
+    } catch (err) {
+      toast("No se pudo agregar: " + err.message);
+    }
+  };
+}
 
 async function renderPagos() {
+  if (PAGOS_VIEW === "ajustes") return renderPagosAjustes();
   try {
-    const data = await fetchJSON(`${API}/payments`);
-    setScope("Este periodo");
+    if (!PAGOS_FROM) {
+      PAGOS_FROM = toISO(mondayOf(todayISO()));
+      PAGOS_TO = todayISO();
+    }
+    setScope("Liquidación");
+    const data = await fetchJSON(`${API}/payments?from=${PAGOS_FROM}&to=${PAGOS_TO}`);
+    const config = data.config || {};
+
     setMain(`
-      <p class="muted">Pago fijo por dia trabajado, no por depto</p>
-      ${data.summary
-        .map(
-          (s) => `
-        <div class="card">
-          <div class="card-row">
-            <span class="card-title">${s.nombre}</span>
-            <span class="card-title">${fmtMoney(s.totalPago)}</span>
-          </div>
-          <p class="card-sub">${s.totalDias} dias x ${fmtMoney(s.tarifaPorDia)}</p>
-        </div>`
-        )
-        .join("")}
+      <div class="pay-dates">
+        <label>Desde<input type="date" id="pg-from" value="${PAGOS_FROM}" /></label>
+        <label>Hasta<input type="date" id="pg-to" value="${PAGOS_TO}" /></label>
+      </div>
+      <div class="pay-presets">
+        <button class="btn-secondary" data-preset="semana">Esta semana</button>
+        <button class="btn-secondary" data-preset="mes">Este mes</button>
+        <button class="btn-secondary" data-ajustes>⚙ Ajustes</button>
+      </div>
+      ${data.summary.every((s) => s.total === 0) ? `<p class="muted">No hay tareas hechas en este rango. Las tareas se pagan cuando están marcadas como hechas.</p>` : ""}
+      ${data.summary.map(payCardHTML).join("")}
     `);
+
+    const setRange = (f, t) => {
+      PAGOS_FROM = f;
+      PAGOS_TO = t;
+      renderPagos();
+    };
+    document.getElementById("pg-from").onchange = (e) => setRange(e.target.value, PAGOS_TO);
+    document.getElementById("pg-to").onchange = (e) => setRange(PAGOS_FROM, e.target.value);
+    document.querySelector('[data-preset="semana"]').onclick = () => setRange(toISO(mondayOf(todayISO())), todayISO());
+    document.querySelector('[data-preset="mes"]').onclick = () => setRange(todayISO().slice(0, 8) + "01", todayISO());
+    document.querySelector("[data-ajustes]").onclick = () => { PAGOS_VIEW = "ajustes"; renderPagos(); };
+
+    document.querySelectorAll("[data-add-item]").forEach((btn) => {
+      btn.onclick = () => openItemForm(btn.getAttribute("data-add-item"), renderPagos);
+    });
+    document.querySelectorAll("[data-del-item]").forEach((btn) => {
+      btn.onclick = async () => {
+        await fetchJSON(`${API}/pay-items`, { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: btn.getAttribute("data-del-item") }) });
+        toast("Ítem eliminado");
+        renderPagos();
+      };
+    });
+    document.querySelectorAll("[data-wa]").forEach((btn) => {
+      btn.onclick = () => {
+        const s = data.summary.find((x) => x.employeeId === btn.getAttribute("data-wa"));
+        const tel = (config.telefonos && config.telefonos[s.employeeId] || "").replace(/\D/g, "");
+        const msg = buildWaMessage(s, PAGOS_FROM, PAGOS_TO);
+        if (!tel) {
+          toast("Cargá el teléfono de " + s.nombre + " en Ajustes");
+          return;
+        }
+        window.open(`https://wa.me/${tel}?text=${encodeURIComponent(msg)}`, "_blank");
+      };
+    });
+  } catch (err) {
+    setMain(`<div class="empty-state">Error: ${err.message}</div>`);
+  }
+}
+
+async function renderPagosAjustes() {
+  try {
+    setScope("Ajustes de pago");
+    const cfg = await fetchJSON(`${API}/pay-config`);
+    FERIADOS_EDIT = [...(cfg.feriados || [])];
+    const cleaners = CONFIG.employees.filter((e) => e.rol === "empleada");
+    const props = CONFIG.properties || [];
+
+    const render = () => {
+      setMain(`
+        <div class="refresh-row"><button class="btn-secondary" data-volver>‹ Volver</button></div>
+
+        <p class="section-label">Montos generales</p>
+        <div class="card">
+          <label class="aj-label">Viático por día trabajado</label>
+          <input type="number" id="aj-viatico" value="${cfg.viatico || 0}" />
+          <label class="aj-label">Plus por domingo</label>
+          <input type="number" id="aj-domingo" value="${cfg.plusDomingo || 0}" />
+          <label class="aj-label">Plus por feriado</label>
+          <input type="number" id="aj-feriado" value="${cfg.plusFeriado || 0}" />
+        </div>
+
+        <p class="section-label">Teléfono para WhatsApp</p>
+        <div class="card">
+          ${cleaners
+            .map(
+              (e) => `<label class="aj-label">${e.nombre}</label>
+              <input type="tel" data-tel="${e.id}" value="${(cfg.telefonos && cfg.telefonos[e.id]) || ""}" placeholder="Ej: 5491130171397" />`
+            )
+            .join("")}
+        </div>
+
+        <p class="section-label">Feriados</p>
+        <div class="card">
+          <div class="chips">${FERIADOS_EDIT.map((f) => `<span class="chip">${fmtDate(f)} <button data-del-feriado="${f}">✕</button></span>`).join("") || `<span class="card-sub">Ninguno cargado</span>`}</div>
+          <div style="display:flex; gap:8px; margin-top:8px;">
+            <input type="date" id="aj-feriado-nuevo" style="flex:1;" />
+            <button class="btn-secondary" data-add-feriado>Agregar</button>
+          </div>
+        </div>
+
+        <p class="section-label">Valor de limpieza por depto</p>
+        <div class="card">
+          ${props
+            .map(
+              (p) => `<label class="aj-label">${p.nombre} — ${p.direccion || p.barrio}</label>
+              <input type="number" data-depto="${p.codigo}" value="${(cfg.valorDepto && cfg.valorDepto[p.codigo]) || 0}" />`
+            )
+            .join("")}
+        </div>
+
+        <div class="refresh-row"><button class="btn-primary" data-guardar>Guardar ajustes</button></div>
+      `);
+
+      document.querySelector("[data-volver]").onclick = () => { PAGOS_VIEW = "liquidacion"; renderPagos(); };
+      document.querySelector("[data-add-feriado]").onclick = () => {
+        const v = document.getElementById("aj-feriado-nuevo").value;
+        if (v && !FERIADOS_EDIT.includes(v)) FERIADOS_EDIT.push(v);
+        FERIADOS_EDIT.sort();
+        render();
+      };
+      document.querySelectorAll("[data-del-feriado]").forEach((b) => {
+        b.onclick = () => {
+          FERIADOS_EDIT = FERIADOS_EDIT.filter((f) => f !== b.getAttribute("data-del-feriado"));
+          render();
+        };
+      });
+      document.querySelector("[data-guardar]").onclick = async () => {
+        const telefonos = {};
+        document.querySelectorAll("[data-tel]").forEach((i) => (telefonos[i.getAttribute("data-tel")] = i.value.trim()));
+        const valorDepto = {};
+        document.querySelectorAll("[data-depto]").forEach((i) => (valorDepto[i.getAttribute("data-depto")] = Number(i.value) || 0));
+        const body = {
+          viatico: Number(document.getElementById("aj-viatico").value) || 0,
+          plusDomingo: Number(document.getElementById("aj-domingo").value) || 0,
+          plusFeriado: Number(document.getElementById("aj-feriado").value) || 0,
+          feriados: FERIADOS_EDIT,
+          telefonos,
+          valorDepto,
+        };
+        try {
+          await fetchJSON(`${API}/pay-config`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+          toast("Ajustes guardados");
+          PAGOS_VIEW = "liquidacion";
+          renderPagos();
+        } catch (err) {
+          toast("No se pudo guardar: " + err.message);
+        }
+      };
+    };
+    render();
   } catch (err) {
     setMain(`<div class="empty-state">Error: ${err.message}</div>`);
   }
