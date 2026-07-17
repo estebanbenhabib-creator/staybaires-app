@@ -450,8 +450,8 @@ function eventCardHTML(t, ctx) {
     <div class="card" style="margin-bottom:8px; border-left:3px solid ${borde};">
       <div class="card-row">
         <div>
-          <p class="card-title">${t.propertyName}</p>
-          <p class="card-sub">${t.direccion || t.barrio}</p>
+          <p class="card-title">${t.direccion || t.propertyName}</p>
+          <p class="card-sub">${t.direccion ? t.propertyName : t.barrio}</p>
           <p class="card-sub">${urgent ? `<span style="color:var(--red-fg);">⚡ Sale y entra hoy · </span>` : ""}${assignedLabel}</p>
         </div>
         ${badge}
@@ -916,6 +916,16 @@ async function renderLavanderia() {
 }
 
 // ---------- Boot ----------
+
+// La sesion se guarda en localStorage (arriba) y se lee al arrancar, asi que
+// no hay que volver a elegir el nombre en cada visita. Ademas le pedimos al
+// navegador que marque el almacenamiento como "persistente" para que no lo
+// borre por falta de espacio o inactividad (importante en la PWA del celular).
+if (navigator.storage && navigator.storage.persist) {
+  navigator.storage.persisted().then((yes) => {
+    if (!yes) navigator.storage.persist().catch(() => {});
+  }).catch(() => {});
+}
 
 async function render() {
   const app = document.getElementById("app");
