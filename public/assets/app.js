@@ -307,30 +307,24 @@ async function renderHoy() {
     }
 
     const payload = await getTasks();
+    const { idx, urgentIds } = buildDayIndex(payload);
+    const cleaners = (CONFIG.employees || []).filter((e) => e.rol === "empleada");
+    const ctx = { puedeAsignar: manage, cleaners, urgentIds };
+
     const limpiezasHoy = payload.tasks.filter((t) => t.date === hoy);
     const checkinsHoy = (payload.checkins || []).filter((c) => c.date === hoy);
-    // Un depto con check-out Y check-in el mismo dia = limpieza urgente (entra
-    // huesped nuevo hoy mismo). Lo marcamos para que salte a la vista.
-    const entranHoy = new Set(checkinsHoy.map((c) => c.propertyCode));
-
     const misLimpiezas = manage ? limpiezasHoy : limpiezasHoy.filter((t) => t.assignedTo === SESSION.employeeId);
 
-    const cleanCard = (t) => {
-      const sameDay = entranHoy.has(t.propertyCode);
-      const assignedLabel = employeeName(t.assignedTo);
-      return `
-      <div class="card" style="margin-bottom:8px;">
-        <div class="card-row">
-          <div>
-            <p class="card-title">${t.propertyName}</p>
-            <p class="card-sub">${t.direccion || t.barrio}</p>
-            ${manage ? `<p class="card-sub">${assignedLabel}</p>` : ""}
-          </div>
-          ${sameDay ? `<span class="badge red">Entra hoy</span>` : statusBadge(t.status)}
-        </div>
-        ${sameDay ? `<p class="card-sub" style="color:var(--red-fg); margin-top:6px;">⚡ Entra un huesped hoy: limpiar con prioridad.</p>` : ""}
-      </div>`;
-    };
+    // Progreso del dia: cuantas limpiezas ya estan hechas.
+    const totalL = misLimpiezas.length;
+    const hechasL = misLimpiezas.filter((t) => t.status === "hecha").length;
+    const pct = totalL ? Math.round((hechasL / totalL) * 100) : 0;
+    const progresoHTML = totalL
+      ? `<div class="progress-card">
+          <div class="progress-head"><span>Limpiezas de hoy</span><span>${hechasL}/${totalL} hechas</span></div>
+          <div class="progress-track"><div class="progress-fill" style="width:${pct}%;"></div></div>
+        </div>`
+      : "";
 
     let extras = "";
     if (manage) {
@@ -346,30 +340,19 @@ async function renderHoy() {
 
     setMain(`
       <p class="muted">Hola ${SESSION.name} · ${fmtDateHeader(hoy)}</p>
-      ${extras}
-      <p class="section-label">${manage ? "Limpiezas de hoy" : "Tus limpiezas de hoy"} (${misLimpiezas.length})</p>
-      ${misLimpiezas.length === 0 ? `<div class="empty-state">No hay limpiezas para hoy.</div>` : misLimpiezas.map(cleanCard).join("")}
+      ${progresoHTML}
+      <p class="section-label">${manage ? "Limpiezas de hoy" : "Tus limpiezas de hoy"} (${totalL})</p>
+      ${totalL === 0 ? `<div class="empty-state">No hay limpiezas para hoy.</div>` : misLimpiezas.map((t) => eventCardHTML(t, ctx)).join("")}
       ${
         manage
           ? `<p class="section-label">Check-ins de hoy (${checkinsHoy.length})</p>
-        ${
-          checkinsHoy.length === 0
-            ? `<div class="empty-state">No hay llegadas hoy.</div>`
-            : checkinsHoy
-                .map(
-                  (c) => `
-          <div class="card" style="margin-bottom:8px;">
-            <div class="card-row">
-              <div><p class="card-title">${c.propertyName}</p><p class="card-sub">${c.direccion || c.barrio}</p></div>
-              ${platformBadge(c.platform)}
-            </div>
-          </div>`
-                )
-                .join("")
-        }`
+        ${checkinsHoy.length === 0 ? `<div class="empty-state">No hay llegadas hoy.</div>` : checkinsHoy.map((c) => eventCardHTML(c, ctx)).join("")}`
           : ""
       }
+      ${extras}
     `);
+
+    attachCardHandlers(renderHoy);
   } catch (err) {
     setMain(`<div class="empty-state">Error cargando el inicio: ${err.message}</div>`);
   }
@@ -662,42 +645,49 @@ async function renderCalendario() {
       };
     });
 
-    document.querySelectorAll("[data-reassign-cal]").forEach((sel) => {
-      sel.onchange = async () => {
-        const id = sel.getAttribute("data-reassign-cal");
-        await fetchJSON(`${API}/tasks`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ id, assignedTo: sel.value }),
-        });
-        CACHE.tasksPayload = null;
-        toast("Asignado a " + employeeName(sel.value));
-        renderCalendario();
-      };
-    });
-
-    // Tocar el card marca (o desmarca) que ese check ya se hizo. No dispara
-    // cuando el toque fue sobre el selector de reasignacion.
-    document.querySelectorAll("[data-cal-card]").forEach((card) => {
-      card.addEventListener("click", async (e) => {
-        if (e.target.closest("select")) return;
-        const id = card.getAttribute("data-cal-card");
-        const esCheckout = card.getAttribute("data-cal-type") === "checkout";
-        const done = card.getAttribute("data-cal-done") === "1";
-        const body = esCheckout ? { id, status: done ? "pendiente" : "hecha" } : { id, done: !done };
-        try {
-          await fetchJSON(`${API}/tasks`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-          CACHE.tasksPayload = null;
-          toast(done ? "Marcado como pendiente" : "Marcado como hecho");
-          renderCalendario();
-        } catch (err) {
-          toast("No se pudo actualizar: " + err.message);
-        }
-      });
-    });
+    attachCardHandlers(renderCalendario);
   } catch (err) {
     setMain(`<div class="empty-state">Error cargando el calendario: ${err.message}</div>`);
   }
+}
+
+// Conecta los handlers de las tarjetas de eventos (reasignar y marcar
+// hecho/pendiente). Lo usan el Calendario y la pantalla Hoy, que comparten
+// eventCardHTML. `rerender` es la funcion que redibuja la pantalla actual.
+function attachCardHandlers(rerender) {
+  document.querySelectorAll("[data-reassign-cal]").forEach((sel) => {
+    sel.onchange = async () => {
+      const id = sel.getAttribute("data-reassign-cal");
+      await fetchJSON(`${API}/tasks`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, assignedTo: sel.value }),
+      });
+      CACHE.tasksPayload = null;
+      toast("Asignado a " + employeeName(sel.value));
+      rerender();
+    };
+  });
+
+  // Tocar el card marca (o desmarca) que ese check ya se hizo. No dispara
+  // cuando el toque fue sobre el selector de reasignacion.
+  document.querySelectorAll("[data-cal-card]").forEach((card) => {
+    card.addEventListener("click", async (e) => {
+      if (e.target.closest("select")) return;
+      const id = card.getAttribute("data-cal-card");
+      const esCheckout = card.getAttribute("data-cal-type") === "checkout";
+      const done = card.getAttribute("data-cal-done") === "1";
+      const body = esCheckout ? { id, status: done ? "pendiente" : "hecha" } : { id, done: !done };
+      try {
+        await fetchJSON(`${API}/tasks`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+        CACHE.tasksPayload = null;
+        toast(done ? "Marcado como pendiente" : "Marcado como hecho");
+        rerender();
+      } catch (err) {
+        toast("No se pudo actualizar: " + err.message);
+      }
+    });
+  });
 }
 
 // ---------- Tareas ----------
