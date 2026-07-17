@@ -5,7 +5,7 @@
 const properties = require("../../data/properties.json");
 const employees = require("../../data/employees.json");
 const { fetchAllCalendars } = require("../lib/fetch-calendars");
-const { buildTasks } = require("../lib/task-engine");
+const { buildTasks, buildCheckins } = require("../lib/task-engine");
 const { getJSON, setJSON } = require("../lib/store");
 
 async function runSync() {
@@ -20,9 +20,11 @@ async function runSync() {
 
   const overrides = await getJSON("task-overrides", {});
   const tasks = buildTasks(properties, icsByCode, employees, overrides);
+  const checkins = buildCheckins(properties, icsByCode);
 
   const payload = {
     tasks,
+    checkins,
     lastSync: new Date().toISOString(),
     syncErrors: errors,
   };

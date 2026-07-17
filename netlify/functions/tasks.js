@@ -28,7 +28,7 @@ exports.handler = async (event) => {
     return {
       statusCode: 200,
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload || { tasks: [], lastSync: null, syncErrors: [] }),
+      body: JSON.stringify(payload || { tasks: [], checkins: [], lastSync: null, syncErrors: [] }),
     };
   }
 
@@ -53,7 +53,7 @@ exports.handler = async (event) => {
     };
     await setJSON("task-overrides", overrides);
 
-    const payload = await getJSON("tasks-cache", { tasks: [], lastSync: null, syncErrors: [] });
+    const payload = await getJSON("tasks-cache", { tasks: [], checkins: [], lastSync: null, syncErrors: [] });
     payload.tasks = payload.tasks.map((t) => (t.id === body.id ? { ...t, ...overrides[body.id] } : t));
     await setJSON("tasks-cache", payload);
 
