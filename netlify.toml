@@ -12,3 +12,10 @@
 
 [functions."sync-calendars"]
   schedule = "@daily"
+
+# Netlify sirve el .webmanifest como octet-stream por defecto; forzamos el
+# tipo correcto para que Chrome en Android ofrezca "Instalar aplicacion".
+[[headers]]
+  for = "/manifest.webmanifest"
+  [headers.values]
+    Content-Type = "application/manifest+json"
