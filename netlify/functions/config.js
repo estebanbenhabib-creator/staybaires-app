@@ -6,10 +6,17 @@ const employees = require("../../data/employees.json");
 const roles = require("../../data/roles.json");
 
 exports.handler = async () => {
-  const publicEmployees = employees.map((e) => ({ id: e.id, nombre: e.nombre, rol: e.rol, jerarquia: e.jerarquia }));
-  return {
-    statusCode: 200,
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ properties, employees: publicEmployees, roles }),
-  };
+    const publicEmployees = employees.map((e) => ({
+          id: e.id,
+          nombre: e.nombre,
+          rol: e.rol,
+          jerarquia: e.jerarquia,
+          esRotativa: !!e.esRotativa,
+          requiresPassword: !!e.password,
+    }));
+    return {
+          statusCode: 200,
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ properties, employees: publicEmployees, roles }),
+    };
 };
