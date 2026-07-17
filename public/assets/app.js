@@ -7,7 +7,7 @@ const ICONS = {
   insumos: "📦", lavanderia: "🧺", mispagos: "💵",
 };
 const TITLES = {
-  hoy: "Hoy", calendario: "Calendario", tareas: "Tareas", empleadas: "Empleadas",
+  hoy: "Hoy", calendario: "Calendario", tareas: "Tareas", empleadas: "Colaboradores",
   pagos: "Pagos", insumos: "Insumos", lavanderia: "Lavanderia", mispagos: "Mis pagos",
 };
 
@@ -107,7 +107,7 @@ function loginEntryHTML(emp) {
         <p class="card-sub" style="color:var(--red-fg); display:none;" data-pass-error="${emp.id}"></p>
       </div>`;
   }
-  return `<button class="name-btn" data-login-direct="${emp.id}">${emp.nombre}${emp.esRotativa ? " (rotativa)" : ""} <span>&rarr;</span></button>`;
+  return `<button class="name-btn" data-login-direct="${emp.id}">${emp.nombre} <span>&rarr;</span></button>`;
 }
 
 function renderLogin() {
@@ -124,7 +124,7 @@ function renderLogin() {
 
       ${admin ? `<div class="role-card"><h3>Admin</h3>${loginEntryHTML(admin)}</div>` : ""}
       <div class="role-card">
-        <h3>Empleada de limpieza</h3>
+        <h3>Colaboradores de limpieza</h3>
         ${cleaners.map(loginEntryHTML).join("")}
       </div>
       ${lavanderia.length ? `<div class="role-card"><h3>Lavanderia</h3>${lavanderia.map(loginEntryHTML).join("")}</div>` : ""}
@@ -132,12 +132,7 @@ function renderLogin() {
   `;
 
   function afterAuth(emp, authData) {
-    if (emp.esRotativa) {
-      const nombreReal = prompt("Como te llamas hoy? (para que quede registrado en las tareas)");
-      login({ role: authData.rol, employeeId: authData.employeeId, name: authData.nombre, nombreReal: nombreReal || "" });
-    } else {
-      login({ role: authData.rol, employeeId: authData.employeeId, name: authData.nombre });
-    }
+    login({ role: authData.rol, employeeId: authData.employeeId, name: authData.nombre });
   }
 
   async function attemptAuth(emp, password) {
@@ -322,7 +317,7 @@ async function renderHoy() {
 
     const cleanCard = (t) => {
       const sameDay = entranHoy.has(t.propertyCode);
-      const assignedLabel = t.assignedTo === "random" && t.assignedName ? `Random (${t.assignedName})` : employeeName(t.assignedTo);
+      const assignedLabel = employeeName(t.assignedTo);
       return `
       <div class="card" style="margin-bottom:8px;">
         <div class="card-row">
@@ -397,6 +392,36 @@ function isoPlusDays(iso, days) {
   return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
 }
 
+function toISO(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+// Lunes de la semana a la que pertenece una fecha (semana arranca lunes).
+function mondayOf(iso) {
+  const [y, m, d] = iso.split("-").map(Number);
+  const dt = new Date(y, m - 1, d);
+  const dow = (dt.getDay() + 6) % 7; // lunes = 0
+  dt.setDate(dt.getDate() - dow);
+  return dt;
+}
+
+// Numero de semana ISO 8601 (la semana 1 es la que contiene el primer jueves
+// del anio). Sirve para el encabezado "Semana NN" en la lista.
+function isoWeekNum(iso) {
+  const [y, m, d] = iso.split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  const dow = (dt.getUTCDay() + 6) % 7;
+  dt.setUTCDate(dt.getUTCDate() - dow + 3); // jueves de esta semana
+  const primerJueves = new Date(Date.UTC(dt.getUTCFullYear(), 0, 4));
+  const pjDow = (primerJueves.getUTCDay() + 6) % 7;
+  primerJueves.setUTCDate(primerJueves.getUTCDate() - pjDow + 3);
+  return 1 + Math.round((dt - primerJueves) / (7 * 24 * 3600 * 1000));
+}
+
+function fmtDayMonth(d) {
+  return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
 function monthLabel(ym) {
   const [y, m] = ym.split("-").map(Number);
   return `${MESES[m - 1]} ${y}`;
@@ -440,11 +465,7 @@ function eventCardHTML(t, ctx) {
   const esCheckout = t.type !== "checkin";
   const urgent = esCheckout && ctx.urgentIds.has(t.id);
   const borde = !esCheckout ? "#639922" : urgent ? "#e24b4a" : "#378add";
-  const assignedLabel = esCheckout
-    ? t.assignedTo === "random" && t.assignedName
-      ? `Random (${t.assignedName})`
-      : employeeName(t.assignedTo)
-    : `Llega huesped · ${platformBadge(t.platform)}`;
+  const assignedLabel = esCheckout ? employeeName(t.assignedTo) : `Llega huesped · ${platformBadge(t.platform)}`;
   const badge = !esCheckout ? `<span class="badge green">Llega</span>` : urgent ? `<span class="badge red">Urgente</span>` : statusBadge(t.status);
   return `
     <div class="card" style="margin-bottom:8px; border-left:3px solid ${borde};">
@@ -475,24 +496,30 @@ function calListaHTML(payload, ctx) {
     (a, b) => a.date.localeCompare(b.date) || (a.type === b.type ? 0 : a.type === "checkin" ? -1 : 1)
   );
   const upcoming = combinado.filter((t) => t.date >= today && t.date <= hasta);
+  if (upcoming.length === 0) return `<div class="empty-state">No hay check-ins ni check-outs en los proximos 45 dias.</div>`;
 
-  const grupos = [];
-  let g = null;
+  // Dos niveles: encabezado de semana del anio (lunes a domingo) y, dentro,
+  // encabezado por dia con sus tarjetas.
+  let html = "";
+  let semanaActual = null;
+  let diaActual = null;
   for (const t of upcoming) {
-    if (!g || g.date !== t.date) {
-      g = { date: t.date, items: [] };
-      grupos.push(g);
+    const lunes = mondayOf(t.date);
+    const claveSemana = toISO(lunes);
+    if (claveSemana !== semanaActual) {
+      semanaActual = claveSemana;
+      diaActual = null;
+      const domingo = new Date(lunes);
+      domingo.setDate(domingo.getDate() + 6);
+      html += `<p class="week-label">Semana ${isoWeekNum(t.date)} · ${fmtDayMonth(lunes)} al ${fmtDayMonth(domingo)}</p>`;
     }
-    g.items.push(t);
+    if (t.date !== diaActual) {
+      diaActual = t.date;
+      html += `<p class="section-label ${t.date === today ? "today" : ""}">${t.date === today ? "Hoy · " : ""}${fmtDateHeader(t.date)}</p>`;
+    }
+    html += eventCardHTML(t, ctx);
   }
-  if (grupos.length === 0) return `<div class="empty-state">No hay check-ins ni check-outs en los proximos 45 dias.</div>`;
-  return grupos
-    .map(
-      (g) => `
-      <p class="section-label ${g.date === today ? "today" : ""}">${g.date === today ? "Hoy · " : ""}${fmtDateHeader(g.date)}</p>
-      ${g.items.map((t) => eventCardHTML(t, ctx)).join("")}`
-    )
-    .join("");
+  return html;
 }
 
 function calMesHTML(idx, ctx) {
@@ -660,13 +687,13 @@ async function renderTareas() {
     const cleaners = (CONFIG.employees || []).filter((e) => e.rol === "empleada");
 
     setMain(`
-      ${canManageTasks() ? `<p class="muted">Todas las tareas quedan asignadas a Susana por defecto. Reasigná a Mari o Random cuando corresponda.</p>` : ""}
+      ${canManageTasks() ? `<p class="muted">Todas las tareas quedan asignadas a Susana por defecto. Reasigná a Mari o Gisel cuando corresponda.</p>` : ""}
       ${
         tasks.length === 0
           ? `<div class="empty-state">No hay tareas todavia.</div>`
           : tasks
               .map((t) => {
-                const assignedLabel = t.assignedTo === "random" && t.assignedName ? `Random (${t.assignedName})` : employeeName(t.assignedTo);
+                const assignedLabel = employeeName(t.assignedTo);
                 return `
         <div class="card" data-task="${t.id}">
           <div class="card-row">
@@ -701,9 +728,6 @@ async function renderTareas() {
       btn.onclick = async () => {
         const id = btn.getAttribute("data-mark-done");
         const body = { id, status: "hecha" };
-        if (SESSION.role === "empleada" && SESSION.employeeId === "random" && SESSION.nombreReal) {
-          body.assignedName = SESSION.nombreReal;
-        }
         await fetchJSON(`${API}/tasks`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
         CACHE.tasksPayload = null;
         toast("Tarea marcada como hecha");

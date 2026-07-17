@@ -21,13 +21,12 @@
     },
     {
           "id": "random",
-          "nombre": "Random",
+          "nombre": "Gisel",
           "rol": "empleada",
           "jerarquia": "rotativa",
           "ordenAsignacion": 3,
           "tarifaPorDia": 5000,
-          "esRotativa": true,
-          "notas": "Persona variable cada vez. Al asignar una tarea a Random hay que anotar el nombre real de quien cubre ese dia."
+          "notas": "Tercera opcion / refuerzo cuando Susana y Mari no dan abasto."
     },
     {
           "id": "lujan",

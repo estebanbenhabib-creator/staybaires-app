@@ -5,7 +5,7 @@
     "scope": "todas"
   },
   "empleada": {
-    "label": "Empleada",
+    "label": "Colaborador",
     "tabs": ["hoy", "tareas", "insumos"],
     "scope": "propia"
   },
