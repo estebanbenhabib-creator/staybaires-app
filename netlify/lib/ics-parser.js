@@ -99,4 +99,19 @@ function checkoutsFromEvents(events) {
   return Array.from(seen.values()).sort((a, b) => a.date.localeCompare(b.date));
 }
 
-module.exports = { parseICS, checkoutsFromEvents, unfoldLines, parseDateValue };
+/**
+ * Igual que checkoutsFromEvents pero para la fecha de llegada (DTSTART).
+ */
+function checkinsFromEvents(events) {
+  const seen = new Map();
+  for (const ev of events) {
+    if (!ev.start) continue;
+    const key = ev.start.date;
+    if (!seen.has(key)) {
+      seen.set(key, { date: key, uid: ev.uid, summary: ev.summary });
+    }
+  }
+  return Array.from(seen.values()).sort((a, b) => a.date.localeCompare(b.date));
+}
+
+module.exports = { parseICS, checkoutsFromEvents, checkinsFromEvents, unfoldLines, parseDateValue };

@@ -2,7 +2,7 @@
 // "node script.js" sin depender de Netlify. La usan tanto la function
 // tasks.mjs como los tests locales.
 
-const { parseICS, checkoutsFromEvents } = require("./ics-parser");
+const { parseICS, checkoutsFromEvents, checkinsFromEvents } = require("./ics-parser");
 
 const BLOCKED_SUMMARY_RE = /not available|blocked|closed$/i;
 
@@ -48,6 +48,33 @@ function checkoutsForProperty(icsTextsByPlatform) {
     }
   }
   // dedup por fecha (si dos plataformas coincidieran, nos quedamos con la primera)
+  const byDate = new Map();
+  for (const c of all) {
+    if (!byDate.has(c.date)) byDate.set(c.date, c);
+  }
+  return Array.from(byDate.values()).sort((a, b) => a.date.localeCompare(b.date));
+}
+
+/**
+ * Igual que checkoutsForProperty pero para la fecha de llegada del huesped
+ * (DTSTART en vez de DTEND). Solo es informativo para el calendario, no
+ * genera tareas de limpieza ni pasa por la logica de asignacion.
+ */
+function checkinsForProperty(icsTextsByPlatform) {
+  const all = [];
+  for (const [platform, text] of Object.entries(icsTextsByPlatform)) {
+    if (!text) continue;
+    let events;
+    try {
+      events = parseICS(text);
+    } catch (err) {
+      continue;
+    }
+    const checkins = checkinsFromEvents(events).filter((c) => isRealReservationCheckout(c, platform));
+    for (const c of checkins) {
+      all.push({ ...c, platform });
+    }
+  }
   const byDate = new Map();
   for (const c of all) {
     if (!byDate.has(c.date)) byDate.set(c.date, c);
@@ -107,6 +134,7 @@ function buildTasks(properties, icsResultsByCode, employees, overrides = {}) {
         direccion: prop.direccion || "",
         date: c.date,
         platform: c.platform,
+        type: "checkout",
         status: already?.status || "pendiente",
         assignedTo,
         assignedName: already?.assignedName || null,
@@ -118,4 +146,30 @@ function buildTasks(properties, icsResultsByCode, employees, overrides = {}) {
   return tasks.sort((a, b) => a.date.localeCompare(b.date));
 }
 
-module.exports = { checkoutsForProperty, pickAssignee, buildTasks, isRealReservationCheckout };
+/**
+ * Construye la lista de check-ins (llegadas de huespedes) para todas las
+ * propiedades. Es solo informativo para el calendario del admin/Susana -
+ * no genera tareas, no tiene asignacion ni estado.
+ */
+function buildCheckins(properties, icsResultsByCode) {
+  const checkins = [];
+  for (const prop of properties) {
+    const icsTexts = icsResultsByCode[prop.codigo] || {};
+    const llegadas = checkinsForProperty(icsTexts);
+    for (const c of llegadas) {
+      checkins.push({
+        id: `${prop.codigo}_checkin_${c.date}`,
+        propertyCode: prop.codigo,
+        propertyName: prop.nombre,
+        barrio: prop.barrio,
+        direccion: prop.direccion || "",
+        date: c.date,
+        platform: c.platform,
+        type: "checkin",
+      });
+    }
+  }
+  return checkins.sort((a, b) => a.date.localeCompare(b.date));
+}
+
+module.exports = { checkoutsForProperty, checkinsForProperty, pickAssignee, buildTasks, buildCheckins, isRealReservationCheckout };
