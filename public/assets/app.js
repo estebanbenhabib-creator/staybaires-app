@@ -33,6 +33,21 @@ function fmtDate(iso) {
   return `${d}/${m}`;
 }
 
+const DIAS_SEMANA = ["Domingo", "Lunes", "Martes", "Miercoles", "Jueves", "Viernes", "Sabado"];
+
+function fmtDateHeader(iso) {
+  if (!iso) return "";
+  const [y, m, d] = iso.split("-").map(Number);
+  const dateObj = new Date(y, m - 1, d); // construccion en hora local, evita el corrimiento de un dia por UTC
+  return `${DIAS_SEMANA[dateObj.getDay()]} ${String(d).padStart(2, "0")}/${String(m).padStart(2, "0")}`;
+}
+
+// Susana ademas de limpiar coordina: puede ver el calendario completo y
+// decidir quien limpia cada depto, no solo Esteban (admin).
+function canManageTasks() {
+  return SESSION.role === "admin" || SESSION.employeeId === "susana";
+}
+
 function fmtMoney(n) {
   return "$" + Number(n || 0).toLocaleString("es-AR");
 }
@@ -154,7 +169,7 @@ function renderLogin() {
 function login(session) {
   SESSION = session;
   localStorage.setItem("sb-session", JSON.stringify(session));
-  CURRENT_TAB = CONFIG.roles[session.role].tabs[0];
+  CURRENT_TAB = tabsForSession()[0];
   renderApp();
 }
 
@@ -166,10 +181,17 @@ function logout() {
 
 // ---------- App shell ----------
 
+function tabsForSession() {
+  const roleConf = CONFIG.roles[SESSION.role];
+  const tabs = roleConf.tabs.slice();
+  if (canManageTasks() && !tabs.includes("calendario")) tabs.unshift("calendario");
+  return tabs;
+}
+
 function renderApp() {
   const app = document.getElementById("app");
   const roleConf = CONFIG.roles[SESSION.role];
-  const tabs = roleConf.tabs;
+  const tabs = tabsForSession();
   if (!tabs.includes(CURRENT_TAB)) CURRENT_TAB = tabs[0];
 
   app.innerHTML = `
@@ -240,31 +262,80 @@ async function renderCalendario() {
   try {
     const payload = await getTasks();
     const today = new Date().toISOString().slice(0, 10);
-    const upcoming = payload.tasks.filter((t) => t.date >= today).slice(0, 20);
+    const horizonte = new Date();
+    horizonte.setDate(horizonte.getDate() + 45);
+    const horizonteISO = horizonte.toISOString().slice(0, 10);
+
+    const upcoming = payload.tasks.filter((t) => t.date >= today && t.date <= horizonteISO);
     setScope(`${(CONFIG.properties || []).length} propiedades`);
 
     const syncInfo = payload.lastSync
       ? `Ultimo sync: ${new Date(payload.lastSync).toLocaleString("es-AR")}`
       : "Todavia no sincronizo";
 
+    const errores = payload.syncErrors && payload.syncErrors.length ? payload.syncErrors : [];
+    const erroresHTML = errores.length
+      ? `<div class="card" style="border-color:var(--red-fg); margin-bottom:10px;">
+          <p class="card-sub" style="color:var(--red-fg); margin:0 0 6px;">Hubo problemas leyendo ${errores.length} calendario(s):</p>
+          ${errores
+            .map((e) => {
+              const prop = (CONFIG.properties || []).find((p) => p.codigo === e.codigo);
+              return `<p class="card-sub" style="margin:2px 0;">${prop ? prop.nombre : e.codigo}: ${e.errors.join(", ")}</p>`;
+            })
+            .join("")}
+        </div>`
+      : "";
+
+    const cleaners = (CONFIG.employees || []).filter((e) => e.rol === "empleada");
+    const puedeAsignar = canManageTasks();
+
+    // agrupar por fecha, ya vienen ordenadas por fecha desde el backend
+    const grupos = [];
+    let grupoActual = null;
+    for (const t of upcoming) {
+      if (!grupoActual || grupoActual.date !== t.date) {
+        grupoActual = { date: t.date, items: [] };
+        grupos.push(grupoActual);
+      }
+      grupoActual.items.push(t);
+    }
+
     setMain(`
       <p class="muted">${syncInfo} · sync automatico diario de Airbnb / Booking / Vrbo</p>
       <div class="refresh-row"><button class="btn-secondary" data-refresh>Actualizar ahora</button></div>
+      ${erroresHTML}
       ${
-        upcoming.length === 0
-          ? `<div class="empty-state">No hay checkouts proximos cargados todavia.</div>`
-          : upcoming
+        grupos.length === 0
+          ? `<div class="empty-state">No hay checkouts en los proximos 45 dias.</div>`
+          : grupos
               .map(
-                (t) => `
-        <div class="card">
+                (g) => `
+        <p style="font-size:13px; font-weight:600; margin:16px 0 8px; color:var(--text-secondary);">${fmtDateHeader(g.date)}</p>
+        ${g.items
+          .map((t) => {
+            const assignedLabel = t.assignedTo === "random" && t.assignedName ? `Random (${t.assignedName})` : employeeName(t.assignedTo);
+            return `
+        <div class="card" style="margin-bottom:8px;">
           <div class="card-row">
             <div>
               <p class="card-title">${t.propertyName}</p>
-              <p class="card-sub">${t.barrio} · checkout ${fmtDate(t.date)}</p>
+              <p class="card-sub">${t.direccion || t.barrio}</p>
+              <p class="card-sub">${assignedLabel}</p>
             </div>
             ${platformBadge(t.platform)}
           </div>
-        </div>`
+          ${
+            puedeAsignar
+              ? `<div style="margin-top:8px;">
+                  <select class="badge-select" data-reassign-cal="${t.id}">
+                    ${cleaners.map((c) => `<option value="${c.id}" ${c.id === t.assignedTo ? "selected" : ""}>${c.nombre}</option>`).join("")}
+                  </select>
+                </div>`
+              : ""
+          }
+        </div>`;
+          })
+          .join("")}`
               )
               .join("")
       }
@@ -280,6 +351,20 @@ async function renderCalendario() {
       }
       renderCalendario();
     };
+
+    document.querySelectorAll("[data-reassign-cal]").forEach((sel) => {
+      sel.onchange = async () => {
+        const id = sel.getAttribute("data-reassign-cal");
+        await fetchJSON(`${API}/tasks`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id, assignedTo: sel.value }),
+        });
+        CACHE.tasksPayload = null;
+        toast("Asignado a " + employeeName(sel.value));
+        renderCalendario();
+      };
+    });
   } catch (err) {
     setMain(`<div class="empty-state">Error cargando el calendario: ${err.message}</div>`);
   }
@@ -291,7 +376,7 @@ async function renderTareas() {
   try {
     const payload = await getTasks();
     let tasks = payload.tasks;
-    if (SESSION.role === "empleada") {
+    if (!canManageTasks()) {
       tasks = tasks.filter((t) => t.assignedTo === SESSION.employeeId);
       setScope(`Tus tareas`);
     } else {
@@ -301,7 +386,7 @@ async function renderTareas() {
     const cleaners = (CONFIG.employees || []).filter((e) => e.rol === "empleada");
 
     setMain(`
-      ${SESSION.role === "admin" ? `<p class="muted">Orden de asignacion automatica: Susana &rarr; Mari &rarr; Random</p>` : ""}
+      ${canManageTasks() ? `<p class="muted">Orden de asignacion automatica: Susana &rarr; Mari &rarr; Random</p>` : ""}
       ${
         tasks.length === 0
           ? `<div class="empty-state">No hay tareas todavia.</div>`
@@ -313,6 +398,7 @@ async function renderTareas() {
           <div class="card-row">
             <div>
               <p class="card-title">${t.propertyName}</p>
+              <p class="card-sub">${t.direccion || t.barrio}</p>
               <p class="card-sub">${assignedLabel} · ${fmtDate(t.date)}</p>
             </div>
             ${statusBadge(t.status)}
@@ -324,7 +410,7 @@ async function renderTareas() {
                 : ""
             }
             ${
-              SESSION.role === "admin"
+              canManageTasks()
                 ? `<select class="badge-select" data-reassign="${t.id}">
                     ${cleaners.map((c) => `<option value="${c.id}" ${c.id === t.assignedTo ? "selected" : ""}>${c.nombre}</option>`).join("")}
                   </select>`
