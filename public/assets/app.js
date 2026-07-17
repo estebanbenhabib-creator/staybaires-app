@@ -69,45 +69,86 @@ function employeeName(id) {
 
 // ---------- Login ----------
 
+function loginEntryHTML(emp) {
+  if (emp.requiresPassword) {
+    return `
+      <div class="login-entry" data-entry="${emp.id}">
+        <div style="display:flex; gap:6px;">
+          <input type="password" placeholder="Clave de ${emp.nombre}" data-pass-input="${emp.id}" style="flex:1; border:1px solid var(--border); border-radius:var(--radius); padding:8px 10px; font-size:14px;" />
+          <button class="btn-primary" data-pass-submit="${emp.id}">Entrar</button>
+        </div>
+        <p class="card-sub" style="color:var(--red-fg); display:none;" data-pass-error="${emp.id}"></p>
+      </div>`;
+  }
+  return `<button class="name-btn" data-login-direct="${emp.id}">${emp.nombre}${emp.esRotativa ? " (rotativa)" : ""} <span>&rarr;</span></button>`;
+}
+
 function renderLogin() {
   const app = document.getElementById("app");
-  const cleaners = (CONFIG.employees || []).filter((e) => e.rol === "empleada").sort((a, b) => (a.id === "susana" ? -1 : 1));
+  const employees = CONFIG.employees || [];
+  const admin = employees.find((e) => e.rol === "admin");
+  const cleaners = employees.filter((e) => e.rol === "empleada").sort((a, b) => (a.id === "susana" ? -1 : 1));
+  const lavanderia = employees.filter((e) => e.rol === "lavanderia");
+
   app.innerHTML = `
     <div class="login-wrap">
       <div class="brand">STAY<span class="blue">BAIRES</span></div>
       <p class="muted">Elegi con que perfil entras</p>
 
-      <div class="role-card">
-        <h3>Admin</h3>
-        <button class="name-btn" data-login-admin>Esteban <span>&rarr;</span></button>
-      </div>
-
+      ${admin ? `<div class="role-card"><h3>Admin</h3>${loginEntryHTML(admin)}</div>` : ""}
       <div class="role-card">
         <h3>Empleada de limpieza</h3>
-        ${cleaners.map((c) => `<button class="name-btn" data-login-empleada="${c.id}">${c.nombre}${c.esRotativa ? " (rotativa)" : ""} <span>&rarr;</span></button>`).join("")}
+        ${cleaners.map(loginEntryHTML).join("")}
       </div>
-
-      <div class="role-card">
-        <h3>Lavanderia</h3>
-        <button class="name-btn" data-login-lavanderia>Lujan <span>&rarr;</span></button>
-      </div>
+      ${lavanderia.length ? `<div class="role-card"><h3>Lavanderia</h3>${lavanderia.map(loginEntryHTML).join("")}</div>` : ""}
     </div>
   `;
 
-  app.querySelector("[data-login-admin]").onclick = () => login({ role: "admin", employeeId: "esteban", name: "Esteban" });
-  app.querySelectorAll("[data-login-empleada]").forEach((btn) => {
-    btn.onclick = () => {
-      const id = btn.getAttribute("data-login-empleada");
-      const emp = cleaners.find((c) => c.id === id);
-      if (emp.esRotativa) {
-        const nombreReal = prompt("Como te llamas hoy? (para que quede registrado en las tareas)");
-        login({ role: "empleada", employeeId: id, name: emp.nombre, nombreReal: nombreReal || "" });
+  function afterAuth(emp, authData) {
+    if (emp.esRotativa) {
+      const nombreReal = prompt("Como te llamas hoy? (para que quede registrado en las tareas)");
+      login({ role: authData.rol, employeeId: authData.employeeId, name: authData.nombre, nombreReal: nombreReal || "" });
+    } else {
+      login({ role: authData.rol, employeeId: authData.employeeId, name: authData.nombre });
+    }
+  }
+
+  async function attemptAuth(emp, password) {
+    try {
+      const res = await fetchJSON(`${API}/auth`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ employeeId: emp.id, password: password || "" }),
+      });
+      afterAuth(emp, res);
+    } catch (err) {
+      const errEl = app.querySelector(`[data-pass-error="${emp.id}"]`);
+      if (errEl) {
+        errEl.textContent = "Clave incorrecta, proba de nuevo";
+        errEl.style.display = "block";
       } else {
-        login({ role: "empleada", employeeId: id, name: emp.nombre });
+        toast("No se pudo entrar: " + err.message);
       }
+    }
+  }
+
+  app.querySelectorAll("[data-login-direct]").forEach((btn) => {
+    btn.onclick = () => {
+      const emp = employees.find((e) => e.id === btn.getAttribute("data-login-direct"));
+      attemptAuth(emp, "");
     };
   });
-  app.querySelector("[data-login-lavanderia]").onclick = () => login({ role: "lavanderia", employeeId: "lujan", name: "Lujan" });
+
+  app.querySelectorAll("[data-pass-submit]").forEach((btn) => {
+    const id = btn.getAttribute("data-pass-submit");
+    const emp = employees.find((e) => e.id === id);
+    const input = app.querySelector(`[data-pass-input="${id}"]`);
+    const submit = () => attemptAuth(emp, input.value);
+    btn.onclick = submit;
+    input.addEventListener("keydown", (ev) => {
+      if (ev.key === "Enter") submit();
+    });
+  });
 }
 
 function login(session) {
