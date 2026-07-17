@@ -19,7 +19,14 @@ async function runSync() {
   }
 
   const overrides = await getJSON("task-overrides", {});
-  const tasks = buildTasks(properties, icsByCode, employees, overrides);
+  const icalTasks = buildTasks(properties, icsByCode, employees, overrides);
+
+  // Tareas manuales (inspecciones, limpiezas extra): no vienen de iCal, se
+  // guardan aparte y se fusionan aca aplicandoles los mismos overrides.
+  const manual = await getJSON("manual-tasks", []);
+  const manualTasks = manual.map((m) => ({ ...m, ...(overrides[m.id] || {}) }));
+
+  const tasks = [...icalTasks, ...manualTasks].sort((a, b) => a.date.localeCompare(b.date));
   const checkins = buildCheckins(properties, icsByCode, overrides);
 
   const payload = {

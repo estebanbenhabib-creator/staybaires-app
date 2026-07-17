@@ -10,6 +10,9 @@ const TITLES = {
   hoy: "Hoy", calendario: "Calendario", tareas: "Tareas", empleadas: "Colaboradores",
   pagos: "Pagos", insumos: "Insumos", lavanderia: "Lavanderia", mispagos: "Mis pagos",
 };
+// Tipos de tarea que se cargan a mano (no vienen de los calendarios). Para
+// sumar uno nuevo en el futuro, agregarlo a esta lista.
+const TIPOS_MANUAL = ["Inspección", "Limpieza extra"];
 
 let SESSION = safeParse(localStorage.getItem("sb-session"));
 let CONFIG = null;
@@ -309,7 +312,7 @@ async function renderHoy() {
     const payload = await getTasks();
     const { idx, urgentIds } = buildDayIndex(payload);
     const cleaners = (CONFIG.employees || []).filter((e) => e.rol === "empleada");
-    const ctx = { puedeAsignar: manage, cleaners, urgentIds };
+    const ctx = { puedeAsignar: manage, esAdmin: SESSION.role === "admin", cleaners, urgentIds };
 
     const limpiezasHoy = payload.tasks.filter((t) => t.date === hoy);
     const checkinsHoy = (payload.checkins || []).filter((c) => c.date === hoy);
@@ -442,39 +445,95 @@ function firstEventDayOfMonth(idx, ym) {
   return dias[0] || null;
 }
 
-// Tarjeta de un evento (checkout o checkin), compartida por la lista y por el
-// detalle de la vista mensual. El card es clickeable para marcar que el check
-// ya se hizo (checkout usa el estado "hecha"; checkin usa el flag "done").
+// Formulario (modal) para crear una tarea manual. Solo lo abre el admin.
+// `onCreated` se llama despues de crear, para redibujar la pantalla actual.
+function openNuevaTareaForm(onCreated) {
+  const props = CONFIG.properties || [];
+  const cleaners = (CONFIG.employees || []).filter((e) => e.rol === "empleada");
+  const hoy = todayISO();
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+  overlay.innerHTML = `
+    <div class="modal">
+      <h3>Nueva tarea</h3>
+      <label>Tipo</label>
+      <select id="nt-tipo">${TIPOS_MANUAL.map((t) => `<option>${t}</option>`).join("")}</select>
+      <label>Fecha</label>
+      <input type="date" id="nt-date" value="${hoy}" />
+      <label>Propiedad</label>
+      <select id="nt-prop">${props.map((p) => `<option value="${p.codigo}">${p.nombre} — ${p.direccion || p.barrio}</option>`).join("")}</select>
+      <label>Asignar a</label>
+      <select id="nt-asig">${cleaners.map((c) => `<option value="${c.id}">${c.nombre}</option>`).join("")}</select>
+      <label>Nota (opcional)</label>
+      <input type="text" id="nt-nota" placeholder="Ej: revisar aire acondicionado" />
+      <div class="modal-actions">
+        <button class="btn-secondary" id="nt-cancel">Cancelar</button>
+        <button class="btn-primary" id="nt-save">Crear</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  const close = () => overlay.remove();
+  overlay.onclick = (e) => { if (e.target === overlay) close(); };
+  overlay.querySelector("#nt-cancel").onclick = close;
+  overlay.querySelector("#nt-save").onclick = async () => {
+    const body = {
+      tipo: overlay.querySelector("#nt-tipo").value,
+      date: overlay.querySelector("#nt-date").value,
+      propertyCode: overlay.querySelector("#nt-prop").value,
+      assignedTo: overlay.querySelector("#nt-asig").value,
+      notes: overlay.querySelector("#nt-nota").value.trim() || null,
+    };
+    if (!body.date) return toast("Elegí una fecha");
+    try {
+      await fetchJSON(`${API}/manual-tasks`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      CACHE.tasksPayload = null;
+      close();
+      toast("Tarea creada");
+      onCreated();
+    } catch (err) {
+      toast("No se pudo crear: " + err.message);
+    }
+  };
+}
+
+// Tarjeta de un evento (checkout, checkin o tarea manual), compartida por la
+// lista, el detalle mensual y la pantalla Hoy. El card es clickeable para
+// marcar que ya se hizo (checkout/manual usan "status"; checkin usa "done").
 function eventCardHTML(t, ctx) {
-  const esCheckout = t.type !== "checkin";
-  const urgent = esCheckout && ctx.urgentIds.has(t.id);
-  const done = esCheckout ? t.status === "hecha" : t.done === true;
-  const borde = done ? "#8a919d" : !esCheckout ? "#639922" : urgent ? "#e24b4a" : "#378add";
-  const assignedLabel = esCheckout ? employeeName(t.assignedTo) : `Llega huesped · ${platformBadge(t.platform)}`;
+  const isCheckin = t.type === "checkin";
+  const isManual = t.source === "manual";
+  const asignable = !isCheckin; // checkout e manuales tienen empleada + estado hecho
+  const urgent = !isCheckin && !isManual && ctx.urgentIds.has(t.id);
+  const done = isCheckin ? t.done === true : t.status === "hecha";
+  const borde = done ? "#8a919d" : isManual ? "#8e6bd0" : isCheckin ? "#639922" : urgent ? "#e24b4a" : "#378add";
+  const assignedLabel = isCheckin ? `Llega huesped · ${platformBadge(t.platform)}` : employeeName(t.assignedTo);
   const badge = done
     ? `<span class="badge green">✓ Hecho</span>`
-    : !esCheckout
+    : isManual
+    ? `<span class="badge violet">${t.tipo}</span>`
+    : isCheckin
     ? `<span class="badge green">Check-in</span>`
     : urgent
     ? `<span class="badge red">Check-out/in</span>`
     : `<span class="badge blue">Check-out</span>`;
   return `
     <div class="card cal-card${done ? " done" : ""}" style="margin-bottom:8px; border-left:3px solid ${borde};"
-         data-cal-card="${t.id}" data-cal-type="${esCheckout ? "checkout" : "checkin"}" data-cal-done="${done ? "1" : "0"}">
+         data-cal-card="${t.id}" data-cal-type="${isCheckin ? "checkin" : "checkout"}" data-cal-done="${done ? "1" : "0"}">
       <div class="card-row">
         <div>
           <p class="card-title">${t.direccion || t.propertyName}</p>
           <p class="card-sub">${t.direccion ? t.propertyName : t.barrio}</p>
-          <p class="card-sub">${urgent && !done ? `<span style="color:var(--red-fg);">⚡ Sale y entra hoy · </span>` : ""}${assignedLabel}</p>
+          <p class="card-sub">${urgent && !done ? `<span style="color:var(--red-fg);">⚡ Sale y entra hoy · </span>` : ""}${assignedLabel}${isManual && t.notes ? ` · ${t.notes}` : ""}</p>
         </div>
         ${badge}
       </div>
       ${
-        esCheckout && ctx.puedeAsignar
-          ? `<div style="margin-top:8px;">
+        asignable && ctx.puedeAsignar
+          ? `<div style="margin-top:8px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
               <select class="badge-select" data-reassign-cal="${t.id}">
                 ${ctx.cleaners.map((c) => `<option value="${c.id}" ${c.id === t.assignedTo ? "selected" : ""}>${c.nombre}</option>`).join("")}
               </select>
+              ${isManual && ctx.esAdmin ? `<button class="link-danger" data-del-manual="${t.id}">Eliminar</button>` : ""}
             </div>`
           : ""
       }
@@ -579,7 +638,7 @@ async function renderCalendario() {
     setScope(`${(CONFIG.properties || []).length} propiedades`);
     const cleaners = (CONFIG.employees || []).filter((e) => e.rol === "empleada");
     const { idx, urgentIds } = buildDayIndex(payload);
-    const ctx = { puedeAsignar: canManageTasks(), cleaners, urgentIds };
+    const ctx = { puedeAsignar: canManageTasks(), esAdmin: SESSION.role === "admin", cleaners, urgentIds };
 
     const syncInfo = payload.lastSync ? `Ultimo sync: ${new Date(payload.lastSync).toLocaleString("es-AR")}` : "Todavia no sincronizo";
 
@@ -607,9 +666,14 @@ async function renderCalendario() {
         </div>
         <button class="btn-secondary" data-refresh>Actualizar</button>
       </div>
+      ${SESSION.role === "admin" ? `<div class="refresh-row"><button class="btn-primary" data-nueva-tarea>+ Nueva tarea</button></div>` : ""}
       ${erroresHTML}
       ${body}
     `);
+
+    if (SESSION.role === "admin") {
+      document.querySelector("[data-nueva-tarea]").onclick = () => openNuevaTareaForm(renderCalendario);
+    }
 
     document.querySelector("[data-refresh]").onclick = async () => {
       setMain(`<div class="empty-state">Sincronizando calendarios...</div>`);
@@ -669,11 +733,28 @@ function attachCardHandlers(rerender) {
     };
   });
 
+  // Eliminar una tarea manual (solo boton "Eliminar", solo admin).
+  document.querySelectorAll("[data-del-manual]").forEach((btn) => {
+    btn.onclick = async (e) => {
+      e.stopPropagation();
+      const id = btn.getAttribute("data-del-manual");
+      if (!confirm("¿Eliminar esta tarea?")) return;
+      try {
+        await fetchJSON(`${API}/manual-tasks`, { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) });
+        CACHE.tasksPayload = null;
+        toast("Tarea eliminada");
+        rerender();
+      } catch (err) {
+        toast("No se pudo eliminar: " + err.message);
+      }
+    };
+  });
+
   // Tocar el card marca (o desmarca) que ese check ya se hizo. No dispara
-  // cuando el toque fue sobre el selector de reasignacion.
+  // cuando el toque fue sobre el selector de reasignacion ni el boton borrar.
   document.querySelectorAll("[data-cal-card]").forEach((card) => {
     card.addEventListener("click", async (e) => {
-      if (e.target.closest("select")) return;
+      if (e.target.closest("select") || e.target.closest("[data-del-manual]")) return;
       const id = card.getAttribute("data-cal-card");
       const esCheckout = card.getAttribute("data-cal-type") === "checkout";
       const done = card.getAttribute("data-cal-done") === "1";
@@ -706,6 +787,7 @@ async function renderTareas() {
     const cleaners = (CONFIG.employees || []).filter((e) => e.rol === "empleada");
 
     setMain(`
+      ${SESSION.role === "admin" ? `<div class="refresh-row"><button class="btn-primary" data-nueva-tarea>+ Nueva tarea</button></div>` : ""}
       ${canManageTasks() ? `<p class="muted">Todas las tareas quedan asignadas a Susana por defecto. Reasigná a Mari o Gisel cuando corresponda.</p>` : ""}
       ${
         tasks.length === 0
@@ -717,11 +799,11 @@ async function renderTareas() {
         <div class="card" data-task="${t.id}">
           <div class="card-row">
             <div>
-              <p class="card-title">${t.propertyName}</p>
-              <p class="card-sub">${t.direccion || t.barrio}</p>
-              <p class="card-sub">${assignedLabel} · ${fmtDate(t.date)}</p>
+              <p class="card-title">${t.direccion || t.propertyName}</p>
+              <p class="card-sub">${t.direccion ? t.propertyName : t.barrio}</p>
+              <p class="card-sub">${assignedLabel} · ${fmtDate(t.date)}${t.source === "manual" ? ` · ${t.tipo}` : ""}</p>
             </div>
-            ${statusBadge(t.status)}
+            ${t.source === "manual" && t.status !== "hecha" ? `<span class="badge violet">${t.tipo}</span>` : statusBadge(t.status)}
           </div>
           <div style="display:flex; gap:8px; margin-top:10px; flex-wrap:wrap;">
             ${
@@ -742,6 +824,10 @@ async function renderTareas() {
               .join("")
       }
     `);
+
+    if (SESSION.role === "admin") {
+      document.querySelector("[data-nueva-tarea]").onclick = () => openNuevaTareaForm(renderTareas);
+    }
 
     document.querySelectorAll("[data-mark-done]").forEach((btn) => {
       btn.onclick = async () => {
