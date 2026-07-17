@@ -138,17 +138,19 @@ function buildTasks(properties, icsResultsByCode, employees, overrides = {}) {
 
 /**
  * Construye la lista de check-ins (llegadas de huespedes) para todas las
- * propiedades. Es solo informativo para el calendario del admin/Susana -
- * no genera tareas, no tiene asignacion ni estado.
+ * propiedades. No genera tareas ni tiene asignacion, pero si guarda un flag
+ * "done" (via overrides) para poder marcar en el calendario que la llegada
+ * ya se gestiono.
  */
-function buildCheckins(properties, icsResultsByCode) {
+function buildCheckins(properties, icsResultsByCode, overrides = {}) {
   const checkins = [];
   for (const prop of properties) {
     const icsTexts = icsResultsByCode[prop.codigo] || {};
     const llegadas = checkinsForProperty(icsTexts);
     for (const c of llegadas) {
+      const id = `${prop.codigo}_checkin_${c.date}`;
       checkins.push({
-        id: `${prop.codigo}_checkin_${c.date}`,
+        id,
         propertyCode: prop.codigo,
         propertyName: prop.nombre,
         barrio: prop.barrio,
@@ -156,6 +158,7 @@ function buildCheckins(properties, icsResultsByCode) {
         date: c.date,
         platform: c.platform,
         type: "checkin",
+        done: overrides[id]?.done || false,
       });
     }
   }

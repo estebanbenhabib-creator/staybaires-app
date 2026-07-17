@@ -460,20 +460,29 @@ function firstEventDayOfMonth(idx, ym) {
 }
 
 // Tarjeta de un evento (checkout o checkin), compartida por la lista y por el
-// detalle de la vista mensual. Borde de color por tipo y badge de estado.
+// detalle de la vista mensual. El card es clickeable para marcar que el check
+// ya se hizo (checkout usa el estado "hecha"; checkin usa el flag "done").
 function eventCardHTML(t, ctx) {
   const esCheckout = t.type !== "checkin";
   const urgent = esCheckout && ctx.urgentIds.has(t.id);
-  const borde = !esCheckout ? "#639922" : urgent ? "#e24b4a" : "#378add";
+  const done = esCheckout ? t.status === "hecha" : t.done === true;
+  const borde = done ? "#8a919d" : !esCheckout ? "#639922" : urgent ? "#e24b4a" : "#378add";
   const assignedLabel = esCheckout ? employeeName(t.assignedTo) : `Llega huesped · ${platformBadge(t.platform)}`;
-  const badge = !esCheckout ? `<span class="badge green">Llega</span>` : urgent ? `<span class="badge red">Urgente</span>` : statusBadge(t.status);
+  const badge = done
+    ? `<span class="badge green">✓ Hecho</span>`
+    : !esCheckout
+    ? `<span class="badge green">Check-in</span>`
+    : urgent
+    ? `<span class="badge red">Check-out/in</span>`
+    : `<span class="badge blue">Check-out</span>`;
   return `
-    <div class="card" style="margin-bottom:8px; border-left:3px solid ${borde};">
+    <div class="card cal-card${done ? " done" : ""}" style="margin-bottom:8px; border-left:3px solid ${borde};"
+         data-cal-card="${t.id}" data-cal-type="${esCheckout ? "checkout" : "checkin"}" data-cal-done="${done ? "1" : "0"}">
       <div class="card-row">
         <div>
           <p class="card-title">${t.direccion || t.propertyName}</p>
           <p class="card-sub">${t.direccion ? t.propertyName : t.barrio}</p>
-          <p class="card-sub">${urgent ? `<span style="color:var(--red-fg);">⚡ Sale y entra hoy · </span>` : ""}${assignedLabel}</p>
+          <p class="card-sub">${urgent && !done ? `<span style="color:var(--red-fg);">⚡ Sale y entra hoy · </span>` : ""}${assignedLabel}</p>
         </div>
         ${badge}
       </div>
@@ -573,9 +582,9 @@ function calMesHTML(idx, ctx) {
     <div class="cal-weekhead">${wk}</div>
     <div class="cal-grid">${grid}</div>
     <div class="cal-legend">
-      <span><i class="blue"></i>Limpieza</span>
-      <span><i class="green"></i>Llegada</span>
-      <span><i class="red"></i>Urgente</span>
+      <span><i class="blue"></i>Check-out</span>
+      <span><i class="green"></i>Check-in</span>
+      <span><i class="red"></i>Check-out/in</span>
     </div>
     <p class="section-label">${fmtDateHeader(CALSELDAY)}${nOuts ? ` · ${nOuts} limpieza${nOuts > 1 ? "s" : ""}` : ""}</p>
     ${detalle}`;
@@ -665,6 +674,26 @@ async function renderCalendario() {
         toast("Asignado a " + employeeName(sel.value));
         renderCalendario();
       };
+    });
+
+    // Tocar el card marca (o desmarca) que ese check ya se hizo. No dispara
+    // cuando el toque fue sobre el selector de reasignacion.
+    document.querySelectorAll("[data-cal-card]").forEach((card) => {
+      card.addEventListener("click", async (e) => {
+        if (e.target.closest("select")) return;
+        const id = card.getAttribute("data-cal-card");
+        const esCheckout = card.getAttribute("data-cal-type") === "checkout";
+        const done = card.getAttribute("data-cal-done") === "1";
+        const body = esCheckout ? { id, status: done ? "pendiente" : "hecha" } : { id, done: !done };
+        try {
+          await fetchJSON(`${API}/tasks`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+          CACHE.tasksPayload = null;
+          toast(done ? "Marcado como pendiente" : "Marcado como hecho");
+          renderCalendario();
+        } catch (err) {
+          toast("No se pudo actualizar: " + err.message);
+        }
+      });
     });
   } catch (err) {
     setMain(`<div class="empty-state">Error cargando el calendario: ${err.message}</div>`);

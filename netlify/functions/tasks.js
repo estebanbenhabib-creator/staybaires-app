@@ -50,14 +50,17 @@ exports.handler = async (event) => {
       ...(body.assignedTo ? { assignedTo: body.assignedTo } : {}),
       ...(body.assignedName !== undefined ? { assignedName: body.assignedName } : {}),
       ...(body.notes !== undefined ? { notes: body.notes } : {}),
+      ...(body.done !== undefined ? { done: body.done } : {}),
     };
     await setJSON("task-overrides", overrides);
 
     const payload = await getJSON("tasks-cache", { tasks: [], checkins: [], lastSync: null, syncErrors: [] });
     payload.tasks = payload.tasks.map((t) => (t.id === body.id ? { ...t, ...overrides[body.id] } : t));
+    payload.checkins = (payload.checkins || []).map((c) => (c.id === body.id ? { ...c, ...overrides[body.id] } : c));
     await setJSON("tasks-cache", payload);
 
-    return { statusCode: 200, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ok: true, task: payload.tasks.find((t) => t.id === body.id) }) };
+    const updated = payload.tasks.find((t) => t.id === body.id) || payload.checkins.find((c) => c.id === body.id);
+    return { statusCode: 200, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ok: true, task: updated }) };
   }
 
   return { statusCode: 405, body: "Method not allowed" };

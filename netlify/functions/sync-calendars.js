@@ -20,7 +20,7 @@ async function runSync() {
 
   const overrides = await getJSON("task-overrides", {});
   const tasks = buildTasks(properties, icsByCode, employees, overrides);
-  const checkins = buildCheckins(properties, icsByCode);
+  const checkins = buildCheckins(properties, icsByCode, overrides);
 
   const payload = {
     tasks,

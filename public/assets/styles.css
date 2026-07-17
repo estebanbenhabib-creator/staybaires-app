@@ -159,6 +159,9 @@ main {
 .section-label.today { color: var(--blue-fg); }
 .week-label { font-size: 12px; font-weight: 700; letter-spacing: 0.02em; text-transform: uppercase; color: var(--navy); margin: 22px 0 4px; padding-bottom: 5px; border-bottom: 2px solid var(--border); }
 .week-label:first-child { margin-top: 4px; }
+.cal-card { cursor: pointer; }
+.cal-card.done { opacity: 0.62; }
+.cal-card.done .card-title { text-decoration: line-through; }
 
 /* Calendario: toggle Lista/Mes + grilla mensual */
 .cal-bar { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 10px; }
