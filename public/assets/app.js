@@ -58,6 +58,13 @@ function platformBadge(platform) {
   return `<span class="badge ${cls}">${label}</span>`;
 }
 
+// En el Calendario, verde = llegada del huesped, azul = salida (que es
+// cuando hay que limpiar). Es un color por tipo de evento, no por plataforma.
+function eventTypeBadge(type) {
+  if (type === "checkin") return `<span class="badge green">Check-in</span>`;
+  return `<span class="badge blue">Check-out</span>`;
+}
+
 function statusBadge(status) {
   if (status === "hecha") return `<span class="badge green">Hecha</span>`;
   if (status === "sin_asignar") return `<span class="badge red">Sin asignar</span>`;
@@ -266,7 +273,8 @@ async function renderCalendario() {
     horizonte.setDate(horizonte.getDate() + 45);
     const horizonteISO = horizonte.toISOString().slice(0, 10);
 
-    const upcoming = payload.tasks.filter((t) => t.date >= today && t.date <= horizonteISO);
+    const combinado = [...payload.tasks, ...(payload.checkins || [])].sort((a, b) => a.date.localeCompare(b.date) || (a.type === b.type ? 0 : a.type === "checkin" ? -1 : 1));
+    const upcoming = combinado.filter((t) => t.date >= today && t.date <= horizonteISO);
     setScope(`${(CONFIG.properties || []).length} propiedades`);
 
     const syncInfo = payload.lastSync
@@ -306,14 +314,19 @@ async function renderCalendario() {
       ${erroresHTML}
       ${
         grupos.length === 0
-          ? `<div class="empty-state">No hay checkouts en los proximos 45 dias.</div>`
+          ? `<div class="empty-state">No hay check-ins ni check-outs en los proximos 45 dias.</div>`
           : grupos
               .map(
                 (g) => `
         <p style="font-size:13px; font-weight:600; margin:16px 0 8px; color:var(--text-secondary);">${fmtDateHeader(g.date)}</p>
         ${g.items
           .map((t) => {
-            const assignedLabel = t.assignedTo === "random" && t.assignedName ? `Random (${t.assignedName})` : employeeName(t.assignedTo);
+            const esCheckout = t.type !== "checkin";
+            const assignedLabel = esCheckout
+              ? t.assignedTo === "random" && t.assignedName
+                ? `Random (${t.assignedName})`
+                : employeeName(t.assignedTo)
+              : `Llega huesped · ${platformBadge(t.platform)}`;
             return `
         <div class="card" style="margin-bottom:8px;">
           <div class="card-row">
@@ -322,10 +335,10 @@ async function renderCalendario() {
               <p class="card-sub">${t.direccion || t.barrio}</p>
               <p class="card-sub">${assignedLabel}</p>
             </div>
-            ${platformBadge(t.platform)}
+            ${eventTypeBadge(t.type)}
           </div>
           ${
-            puedeAsignar
+            esCheckout && puedeAsignar
               ? `<div style="margin-top:8px;">
                   <select class="badge-select" data-reassign-cal="${t.id}">
                     ${cleaners.map((c) => `<option value="${c.id}" ${c.id === t.assignedTo ? "selected" : ""}>${c.nombre}</option>`).join("")}
