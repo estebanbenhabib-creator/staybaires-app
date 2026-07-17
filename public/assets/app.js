@@ -660,7 +660,7 @@ async function renderTareas() {
     const cleaners = (CONFIG.employees || []).filter((e) => e.rol === "empleada");
 
     setMain(`
-      ${canManageTasks() ? `<p class="muted">Orden de asignacion automatica: Susana &rarr; Mari &rarr; Random</p>` : ""}
+      ${canManageTasks() ? `<p class="muted">Todas las tareas quedan asignadas a Susana por defecto. Reasigná a Mari o Random cuando corresponda.</p>` : ""}
       ${
         tasks.length === 0
           ? `<div class="empty-state">No hay tareas todavia.</div>`

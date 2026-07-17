@@ -83,22 +83,16 @@ function checkinsForProperty(icsTextsByPlatform) {
 }
 
 /**
- * Devuelve la primera empleada disponible segun jerarquia (orden de
- * asignacion) que no tenga ya una tarea asignada ese mismo dia. Si todas
- * las de la jerarquia ya tienen algo ese dia, cae en Random.
+ * Empleada asignada por defecto a toda tarea nueva: la principal (Susana),
+ * que coordina y despues reparte a Mari/Random reasignando a mano. La
+ * reasignacion manual se respeta aparte (via overrides en buildTasks), asi
+ * que esto solo define el estado inicial de una tarea sin tocar.
  */
-function pickAssignee(date, employees, tasksAlreadyAssignedToday) {
+function pickAssignee(employees) {
   const cleaners = employees
     .filter((e) => e.rol === "empleada")
     .sort((a, b) => (a.ordenAsignacion || 99) - (b.ordenAsignacion || 99));
-
-  for (const emp of cleaners) {
-    const busy = tasksAlreadyAssignedToday.some((t) => t.assignedTo === emp.id);
-    if (!busy) return emp.id;
-  }
-  // todas ocupadas: cae en la rotativa igual (alguien va a cubrir)
-  const rotativa = cleaners.find((e) => e.esRotativa);
-  return rotativa ? rotativa.id : cleaners[0] && cleaners[0].id;
+  return cleaners[0] ? cleaners[0].id : null;
 }
 
 /**
@@ -111,7 +105,7 @@ function pickAssignee(date, employees, tasksAlreadyAssignedToday) {
  */
 function buildTasks(properties, icsResultsByCode, employees, overrides = {}) {
   const tasks = [];
-  const assignedByDate = new Map();
+  const defaultAssignee = pickAssignee(employees);
 
   for (const prop of properties) {
     const icsTexts = icsResultsByCode[prop.codigo] || {};
@@ -120,11 +114,7 @@ function buildTasks(properties, icsResultsByCode, employees, overrides = {}) {
       const taskId = `${prop.codigo}_${c.date}`;
       const already = overrides[taskId];
 
-      if (!assignedByDate.has(c.date)) assignedByDate.set(c.date, []);
-      const todays = assignedByDate.get(c.date);
-
-      const assignedTo = already?.assignedTo || pickAssignee(c.date, employees, todays);
-      todays.push({ assignedTo });
+      const assignedTo = already?.assignedTo || defaultAssignee;
 
       tasks.push({
         id: taskId,
