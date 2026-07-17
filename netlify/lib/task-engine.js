@@ -9,11 +9,21 @@ const BLOCKED_SUMMARY_RE = /not available|blocked|closed$/i;
 /**
  * Filtra checkouts que en realidad son bloqueos manuales del anfitrion
  * (no una reserva real), asi no generamos tareas de limpieza sin sentido.
+ *
+ * OJO: esto solo tiene sentido para Airbnb, que mezcla en el mismo feed
+ * las reservas reales Y los bloqueos manuales del host ("Airbnb (Not
+ * available)"). Booking.com y Vrbo exportan un feed que son solo reservas
+ * confirmadas - si les aplicamos este mismo filtro, un evento con summary
+ * "CLOSED - Not available" (que en Booking SI es una reserva real, asi le
+ * dicen ellos) se descarta por error y la limpieza correspondiente
+ * desaparece del calendario. Por eso el filtro solo corre para platform
+ * "airbnb"; booking/vrbo siempre se toman como reserva real.
  */
-function isRealReservationCheckout(checkout) {
+function isRealReservationCheckout(checkout, platform) {
+  if (platform !== "airbnb") return true;
   const s = (checkout.summary || "").trim();
-  if (s === "") return true; // Booking/Vrbo a veces no mandan summary
-  if (/reserv/i.test(s)) return true; // "Reserved", "CLOSED - Not available - Reserved" (Booking)
+  if (s === "") return true;
+  if (/reserv/i.test(s)) return true; // "Reserved"
   if (BLOCKED_SUMMARY_RE.test(s)) return false;
   return true;
 }
@@ -32,7 +42,7 @@ function checkoutsForProperty(icsTextsByPlatform) {
     } catch (err) {
       continue;
     }
-    const checkouts = checkoutsFromEvents(events).filter(isRealReservationCheckout);
+    const checkouts = checkoutsFromEvents(events).filter((c) => isRealReservationCheckout(c, platform));
     for (const c of checkouts) {
       all.push({ ...c, platform });
     }
@@ -94,6 +104,7 @@ function buildTasks(properties, icsResultsByCode, employees, overrides = {}) {
         propertyCode: prop.codigo,
         propertyName: prop.nombre,
         barrio: prop.barrio,
+        direccion: prop.direccion || "",
         date: c.date,
         platform: c.platform,
         status: already?.status || "pendiente",
