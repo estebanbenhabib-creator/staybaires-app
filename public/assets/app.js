@@ -920,18 +920,32 @@ function payRow(label, monto) {
   return `<div class="pay-row"><span>${label}</span><span>${fmtMoney(monto)}</span></div>`;
 }
 
+// Solo la calle (lo que va antes de la primera coma de la direccion).
+function calleDepto(d) {
+  return (d.direccion ? d.direccion.split(",")[0].trim() : "") || d.nombre || "Depto";
+}
+function esItemSuper(concepto) {
+  return /super/i.test(concepto);
+}
+function payItemRow(it) {
+  return `<div class="pay-row"><span>${it.concepto} <button class="link-danger" data-del-item="${it.id}" style="padding:0 4px;">✕</button></span><span>${fmtMoney(it.monto)}</span></div>`;
+}
+
+// Orden del detalle: (A) cada depto por su calle + valor (limpiezas e
+// inspecciones), (B) extras (plus + items que no son supermercado),
+// (C) supermercado, (D) viaticos, y el total.
 function payCardHTML(s) {
-  const rows = [payRow(`Viático: ${s.totalDias} día${s.totalDias !== 1 ? "s" : ""} × ${fmtMoney(s.viaticoDia)}`, s.viatico)];
-  if (s.valorDeptos) rows.push(payRow(`Deptos limpiados (${s.cantDeptos})`, s.valorDeptos));
+  const rows = [];
+  for (const d of s.deptosDetalle) rows.push(payRow(calleDepto(d), d.monto));
   if (s.plusDomingo) rows.push(payRow(`Plus domingo (${s.domingos})`, s.plusDomingo));
   if (s.plusFeriado) rows.push(payRow(`Plus feriado (${s.feriados})`, s.plusFeriado));
-  for (const it of s.items) {
-    rows.push(`<div class="pay-row"><span>${it.concepto} <button class="link-danger" data-del-item="${it.id}" style="padding:0 4px;">✕</button></span><span>${fmtMoney(it.monto)}</span></div>`);
-  }
+  for (const it of s.items) if (!esItemSuper(it.concepto)) rows.push(payItemRow(it));
+  for (const it of s.items) if (esItemSuper(it.concepto)) rows.push(payItemRow(it));
+  if (s.totalDias) rows.push(payRow(`Viático: ${s.totalDias} día${s.totalDias !== 1 ? "s" : ""} × ${fmtMoney(s.viaticoDia)}`, s.viatico));
   return `
     <div class="card">
       <div class="card-row"><span class="card-title">${s.nombre}</span><span class="card-title">${fmtMoney(s.total)}</span></div>
-      <div class="pay-breakdown">${rows.join("")}</div>
+      <div class="pay-breakdown">${rows.join("") || `<div class="pay-row"><span>Sin actividad</span><span>${fmtMoney(0)}</span></div>`}</div>
       <div class="pay-actions">
         <button class="btn-secondary" data-add-item="${s.employeeId}">+ Agregar ítem</button>
         <button class="btn-primary" data-wa="${s.employeeId}">Enviar por WhatsApp</button>
@@ -941,11 +955,12 @@ function payCardHTML(s) {
 
 function buildWaMessage(s, from, to) {
   const L = [`*Liquidación ${s.nombre}* — ${fmtDate(from)} al ${fmtDate(to)}`];
-  L.push(`Viático: ${s.totalDias} día${s.totalDias !== 1 ? "s" : ""} × ${fmtMoney(s.viaticoDia)} = ${fmtMoney(s.viatico)}`);
-  if (s.valorDeptos) L.push(`Deptos limpiados (${s.cantDeptos}): ${fmtMoney(s.valorDeptos)}`);
+  for (const d of s.deptosDetalle) L.push(`${calleDepto(d)}: ${fmtMoney(d.monto)}`);
   if (s.plusDomingo) L.push(`Plus domingo (${s.domingos}): ${fmtMoney(s.plusDomingo)}`);
   if (s.plusFeriado) L.push(`Plus feriado (${s.feriados}): ${fmtMoney(s.plusFeriado)}`);
-  for (const it of s.items) L.push(`${it.concepto}: ${fmtMoney(it.monto)}`);
+  for (const it of s.items) if (!esItemSuper(it.concepto)) L.push(`${it.concepto}: ${fmtMoney(it.monto)}`);
+  for (const it of s.items) if (esItemSuper(it.concepto)) L.push(`${it.concepto}: ${fmtMoney(it.monto)}`);
+  if (s.totalDias) L.push(`Viático: ${s.totalDias} día${s.totalDias !== 1 ? "s" : ""} × ${fmtMoney(s.viaticoDia)} = ${fmtMoney(s.viatico)}`);
   L.push("");
   L.push(`*TOTAL: ${fmtMoney(s.total)}*`);
   return L.join("\n");
