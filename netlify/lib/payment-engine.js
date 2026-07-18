@@ -32,11 +32,15 @@ function computeLiquidacion(tasks, employees, config, items, from, to) {
     const suyas = tasks.filter((t) => t.assignedTo === emp.id && t.status === "hecha" && t.type !== "checkin" && inRange(t.date));
     const dias = Array.from(new Set(suyas.map((t) => t.date))).sort();
 
+    // Las limpiezas de check-out valen el precio fijo del depto (Ajustes); las
+    // tareas manuales (inspeccion, limpieza extra) valen lo que se cargo en cada
+    // una, porque varian caso a caso.
     const deptosDetalle = suyas.map((t) => ({
       nombre: t.propertyName,
       direccion: t.direccion,
       date: t.date,
-      monto: (cfg.valorDepto && cfg.valorDepto[t.propertyCode]) || 0,
+      tipo: t.source === "manual" ? t.tipo : null,
+      monto: t.source === "manual" ? Number(t.valor) || 0 : (cfg.valorDepto && cfg.valorDepto[t.propertyCode]) || 0,
     }));
     const valorDeptos = deptosDetalle.reduce((s, d) => s + d.monto, 0);
 

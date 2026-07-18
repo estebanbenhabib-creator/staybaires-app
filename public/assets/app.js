@@ -469,6 +469,8 @@ function openNuevaTareaForm(onCreated) {
       <select id="nt-prop">${props.map((p) => `<option value="${p.codigo}">${p.nombre} — ${p.direccion || p.barrio}</option>`).join("")}</select>
       <label>Asignar a</label>
       <select id="nt-asig">${cleaners.map((c) => `<option value="${c.id}">${c.nombre}</option>`).join("")}</select>
+      <label>Valor / pago</label>
+      <input type="number" id="nt-valor" inputmode="numeric" placeholder="0" />
       <label>Nota (opcional)</label>
       <input type="text" id="nt-nota" placeholder="Ej: revisar aire acondicionado" />
       <div class="modal-actions">
@@ -486,6 +488,7 @@ function openNuevaTareaForm(onCreated) {
       date: overlay.querySelector("#nt-date").value,
       propertyCode: overlay.querySelector("#nt-prop").value,
       assignedTo: overlay.querySelector("#nt-asig").value,
+      valor: Number(overlay.querySelector("#nt-valor").value) || 0,
       notes: overlay.querySelector("#nt-nota").value.trim() || null,
     };
     if (!body.date) return toast("Elegí una fecha");
@@ -969,7 +972,7 @@ function buildWaMessage(s, from, to) {
 function openItemForm(employeeId, onDone) {
   const overlay = document.createElement("div");
   overlay.className = "modal-overlay";
-  const conceptos = ["Reembolso supermercado", "Artículos de limpieza", "Plus suciedad", "Viático extra", "Otro"];
+  const conceptos = ["Reembolso supermercado", "Artículos de limpieza", "Plus muy sucio", "Viático extra", "Otro"];
   overlay.innerHTML = `
     <div class="modal">
       <h3>Agregar ítem</h3>

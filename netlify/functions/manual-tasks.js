@@ -46,6 +46,7 @@ exports.handler = async (event) => {
       direccion: prop ? prop.direccion || "" : body.direccion || "",
       barrio: prop ? prop.barrio || "" : "",
       assignedTo: body.assignedTo,
+      valor: Number(body.valor) || 0,
       notes: body.notes || null,
       status: "pendiente",
     };
