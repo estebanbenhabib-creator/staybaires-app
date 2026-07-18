@@ -256,6 +256,10 @@ function setScope(text) {
 }
 
 function renderTab(tab) {
+  // Hoy y Calendario usan su propio titular grande (estilo Airbnb), asi que
+  // les ocultamos la barra de titulo generica del shell.
+  const bar = document.querySelector(".screen-title-bar");
+  if (bar) bar.style.display = tab === "hoy" || tab === "calendario" ? "none" : "";
   setMain(`<div class="empty-state">Cargando...</div>`);
   const handlers = {
     hoy: renderHoy,
@@ -327,11 +331,9 @@ async function renderHoy() {
     const totalL = misLimpiezas.length;
     const hechasL = misLimpiezas.filter((t) => t.status === "hecha").length;
     const pct = totalL ? Math.round((hechasL / totalL) * 100) : 0;
+    const headline = totalL === 0 ? "Hoy no hay limpiezas" : `${manage ? "Hoy tenés" : "Tenés"} ${totalL} limpieza${totalL !== 1 ? "s" : ""}`;
     const progresoHTML = totalL
-      ? `<div class="progress-card">
-          <div class="progress-head"><span>Limpiezas de hoy</span><span>${hechasL}/${totalL} hechas</span></div>
-          <div class="progress-track"><div class="progress-fill" style="width:${pct}%;"></div></div>
-        </div>`
+      ? `<div class="ab-progress"><div class="h"><span>Progreso del día</span><span><b>${hechasL}</b> de ${totalL} hechas</span></div><div class="ab-track"><div class="ab-fill" style="width:${pct}%;"></div></div></div>`
       : "";
 
     let extras = "";
@@ -340,20 +342,21 @@ async function renderHoy() {
       const bajos = insumos.filter((i) => i.stockActual < i.stockMinimo);
       const lavPend = pedidos.filter((p) => p.status !== "completado");
       extras = `
-        <div class="stat-grid">
+        <p class="ab-section">Resumen</p>
+        <div class="stat-grid" style="margin-top:10px;">
           <div class="stat"><p class="label">Insumos bajos</p><p class="value ${bajos.length ? "warn" : ""}">${bajos.length}</p></div>
           <div class="stat"><p class="label">Lavanderia pendiente</p><p class="value">${lavPend.length}</p></div>
         </div>`;
     }
 
     setMain(`
-      <p class="muted">Hola ${SESSION.name} · ${fmtDateHeader(hoy)}</p>
+      <div class="ab-greeting">Hola ${SESSION.name} · ${fmtDateHeader(hoy)}</div>
+      <h1 class="ab-headline">${headline}</h1>
       ${progresoHTML}
-      <p class="section-label">${manage ? "Limpiezas de hoy" : "Tus limpiezas de hoy"} (${totalL})</p>
-      ${totalL === 0 ? `<div class="empty-state">No hay limpiezas para hoy.</div>` : misLimpiezas.map((t) => eventCardHTML(t, ctx)).join("")}
+      ${totalL === 0 ? "" : misLimpiezas.map((t) => eventCardHTML(t, ctx)).join("")}
       ${
         manage
-          ? `<p class="section-label">Check-ins de hoy (${checkinsHoy.length})</p>
+          ? `<p class="ab-section">Check-ins de hoy</p>
         ${checkinsHoy.length === 0 ? `<div class="empty-state">No hay llegadas hoy.</div>` : checkinsHoy.map((c) => eventCardHTML(c, ctx)).join("")}`
           : ""
       }
@@ -504,47 +507,61 @@ function openNuevaTareaForm(onCreated) {
   };
 }
 
-// Tarjeta de un evento (checkout, checkin o tarea manual), compartida por la
-// lista, el detalle mensual y la pantalla Hoy. El card es clickeable para
-// marcar que ya se hizo (checkout/manual usan "status"; checkin usa "done").
+function platformName(p) {
+  return { airbnb: "Airbnb", booking: "Booking", vrbo: "Vrbo" }[p] || p || "";
+}
+// Color del avatar segun la colaboradora (fondo claro + texto del mismo tono).
+function avatarColors(id) {
+  return { susana: ["#e8e4fb", "#534ab7"], mari: ["#e1f5ee", "#0f6e56"], random: ["#faeeda", "#854f0b"] }[id] || ["#eef2f6", "#5b6472"];
+}
+
+// Tarjeta de un evento (checkout, checkin o tarea manual), estilo lista.
+// Compartida por Hoy, la lista del calendario y el detalle mensual. El card
+// es clickeable para marcar que ya se hizo (checkout/manual usan "status";
+// checkin usa "done").
 function eventCardHTML(t, ctx) {
   const isCheckin = t.type === "checkin";
   const isManual = t.source === "manual";
-  const asignable = !isCheckin; // checkout e manuales tienen empleada + estado hecho
+  const asignable = !isCheckin;
   const urgent = !isCheckin && !isManual && ctx.urgentIds.has(t.id);
   const done = isCheckin ? t.done === true : t.status === "hecha";
-  const borde = done ? "#8a919d" : isManual ? "#8e6bd0" : isCheckin ? "#639922" : urgent ? "#e24b4a" : "#378add";
-  const assignedLabel = isCheckin ? `Llega huesped · ${platformBadge(t.platform)}` : employeeName(t.assignedTo);
-  const badge = done
-    ? `<span class="badge green">✓ Hecho</span>`
-    : isManual
-    ? `<span class="badge violet">${t.tipo}</span>`
-    : isCheckin
-    ? `<span class="badge green">Check-in</span>`
-    : urgent
-    ? `<span class="badge red">Check-out/in</span>`
-    : `<span class="badge blue">Check-out</span>`;
+  const titulo = t.direccion || t.propertyName;
+  const cleaner = employeeName(t.assignedTo);
+
+  const sub = isCheckin
+    ? `Llega huésped · ${platformName(t.platform)}`
+    : `${t.propertyName}${isManual && t.notes ? ` · ${t.notes}` : ""} · ${cleaner}`;
+
+  let statusCls, statusTxt;
+  if (done) [statusCls, statusTxt] = ["green", "✓ Hecho"];
+  else if (isManual) [statusCls, statusTxt] = ["violet", t.tipo];
+  else if (isCheckin) [statusCls, statusTxt] = ["green", "Check-in"];
+  else if (urgent) [statusCls, statusTxt] = ["red", "Check-out/in · entra hoy"];
+  else [statusCls, statusTxt] = ["blue", "Check-out"];
+
+  const [abg, afg] = avatarColors(t.assignedTo);
+  const media = isCheckin
+    ? `<div class="ev-media"><div class="ev-thumb">🏠</div></div>`
+    : `<div class="ev-media"><div class="ev-avatar" style="background:${abg}; color:${afg};">${(cleaner || "?").charAt(0)}</div><div class="ev-thumb mini">🏠</div></div>`;
+
   return `
-    <div class="card cal-card${done ? " done" : ""}" style="margin-bottom:8px; border-left:3px solid ${borde};"
-         data-cal-card="${t.id}" data-cal-type="${isCheckin ? "checkin" : "checkout"}" data-cal-done="${done ? "1" : "0"}">
-      <div class="card-row">
-        <div>
-          <p class="card-title">${t.direccion || t.propertyName}</p>
-          <p class="card-sub">${t.direccion ? t.propertyName : t.barrio}</p>
-          <p class="card-sub">${urgent && !done ? `<span style="color:var(--red-fg);">⚡ Sale y entra hoy · </span>` : ""}${assignedLabel}${isManual && t.notes ? ` · ${t.notes}` : ""}</p>
-        </div>
-        ${badge}
+    <div class="ev-card cal-card${done ? " done" : ""}" data-cal-card="${t.id}" data-cal-type="${isCheckin ? "checkin" : "checkout"}" data-cal-done="${done ? "1" : "0"}">
+      <div class="ev-main">
+        <div class="ev-title">${titulo}</div>
+        <div class="ev-sub">${sub}</div>
+        <div class="ev-status ${statusCls}">${statusTxt}</div>
+        ${
+          asignable && ctx.puedeAsignar
+            ? `<div class="ev-reassign">
+                <select class="badge-select" data-reassign-cal="${t.id}">
+                  ${ctx.cleaners.map((c) => `<option value="${c.id}" ${c.id === t.assignedTo ? "selected" : ""}>${c.nombre}</option>`).join("")}
+                </select>
+                ${isManual && ctx.esAdmin ? `<button class="link-danger" data-del-manual="${t.id}">Eliminar</button>` : ""}
+              </div>`
+            : ""
+        }
       </div>
-      ${
-        asignable && ctx.puedeAsignar
-          ? `<div style="margin-top:8px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-              <select class="badge-select" data-reassign-cal="${t.id}">
-                ${ctx.cleaners.map((c) => `<option value="${c.id}" ${c.id === t.assignedTo ? "selected" : ""}>${c.nombre}</option>`).join("")}
-              </select>
-              ${isManual && ctx.esAdmin ? `<button class="link-danger" data-del-manual="${t.id}">Eliminar</button>` : ""}
-            </div>`
-          : ""
-      }
+      ${media}
     </div>`;
 }
 
@@ -570,11 +587,11 @@ function calListaHTML(payload, ctx) {
       diaActual = null;
       const domingo = new Date(lunes);
       domingo.setDate(domingo.getDate() + 6);
-      html += `<p class="week-label">Semana ${isoWeekNum(t.date)} · ${fmtDayMonth(lunes)} al ${fmtDayMonth(domingo)}</p>`;
+      html += `<p class="ab-week">Semana ${isoWeekNum(t.date)} · ${fmtDayMonth(lunes)} al ${fmtDayMonth(domingo)}</p>`;
     }
     if (t.date !== diaActual) {
       diaActual = t.date;
-      html += `<p class="section-label ${t.date === today ? "today" : ""}">${t.date === today ? "Hoy · " : ""}${fmtDateHeader(t.date)}</p>`;
+      html += `<p class="ab-day ${t.date === today ? "today" : ""}">${t.date === today ? "Hoy · " : ""}${fmtDateHeader(t.date)}</p>`;
     }
     html += eventCardHTML(t, ctx);
   }
@@ -636,7 +653,7 @@ function calMesHTML(idx, ctx) {
       <span><i class="green"></i>Check-in</span>
       <span><i class="red"></i>Check-out/in</span>
     </div>
-    <p class="section-label">${fmtDateHeader(CALSELDAY)}${nOuts ? ` · ${nOuts} limpieza${nOuts > 1 ? "s" : ""}` : ""}</p>
+    <p class="ab-day" style="margin-top:16px;">${fmtDateHeader(CALSELDAY)}${nOuts ? ` · ${nOuts} limpieza${nOuts > 1 ? "s" : ""}` : ""}</p>
     ${detalle}`;
 }
 
@@ -666,15 +683,16 @@ async function renderCalendario() {
     const body = CALVIEW === "mes" ? calMesHTML(idx, ctx) : calListaHTML(payload, ctx);
 
     setMain(`
-      <p class="muted">${syncInfo} · sync automatico diario</p>
-      <div class="cal-bar">
-        <div class="cal-toggle">
+      <div class="ab-toolbar">
+        <div class="ab-toggle">
           <button class="${CALVIEW === "lista" ? "on" : ""}" data-calview="lista">Lista</button>
           <button class="${CALVIEW === "mes" ? "on" : ""}" data-calview="mes">Mes</button>
         </div>
-        <button class="btn-secondary" data-refresh>Actualizar</button>
+        <button class="ab-iconbtn" data-refresh aria-label="Actualizar">⟳</button>
       </div>
-      ${SESSION.role === "admin" ? `<div class="refresh-row"><button class="btn-primary" data-nueva-tarea>+ Nueva tarea</button></div>` : ""}
+      <h1 class="ab-headline">Calendario</h1>
+      <div class="ab-sub">${syncInfo} · sync automático diario</div>
+      ${SESSION.role === "admin" ? `<div style="margin:14px 0 4px;"><button class="btn-primary" data-nueva-tarea>+ Nueva tarea</button></div>` : ""}
       ${erroresHTML}
       ${body}
     `);
