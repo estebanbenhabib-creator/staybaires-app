@@ -36,6 +36,8 @@ function computeLiquidacion(tasks, employees, config, items, from, to) {
     // tareas manuales (inspeccion, limpieza extra) valen lo que se cargo en cada
     // una, porque varian caso a caso.
     const deptosDetalle = suyas.map((t) => ({
+      id: t.id,
+      manual: t.source === "manual",
       nombre: t.propertyName,
       direccion: t.direccion,
       date: t.date,

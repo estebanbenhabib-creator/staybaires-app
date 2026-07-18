@@ -927,6 +927,11 @@ function payRow(label, monto) {
 function calleDepto(d) {
   return (d.direccion ? d.direccion.split(",")[0].trim() : "") || d.nombre || "Depto";
 }
+// Nombre de la tarea + departamento: "Inspección · Avenida Corrientes 2164"
+// (las limpiezas de check-out no tienen tipo, van como "Limpieza").
+function deptoLabel(d) {
+  return `${d.tipo || "Limpieza"} · ${calleDepto(d)}`;
+}
 function esItemSuper(concepto) {
   return /super/i.test(concepto);
 }
@@ -934,12 +939,20 @@ function payItemRow(it) {
   return `<div class="pay-row"><span>${it.concepto} <button class="link-danger" data-del-item="${it.id}" style="padding:0 4px;">✕</button></span><span>${fmtMoney(it.monto)}</span></div>`;
 }
 
-// Orden del detalle: (A) cada depto por su calle + valor (limpiezas e
-// inspecciones), (B) extras (plus + items que no son supermercado),
-// (C) supermercado, (D) viaticos, y el total.
+// Orden del detalle: (A) cada depto (tarea + calle) + valor (limpiezas e
+// inspecciones; el precio de las manuales se puede editar), (B) extras (plus +
+// items que no son supermercado), (C) supermercado, (D) viaticos, y el total.
 function payCardHTML(s) {
   const rows = [];
-  for (const d of s.deptosDetalle) rows.push(payRow(calleDepto(d), d.monto));
+  for (const d of s.deptosDetalle) {
+    if (d.manual) {
+      rows.push(
+        `<div class="pay-row"><span>${deptoLabel(d)}</span><span>${fmtMoney(d.monto)} <button class="link-edit" data-edit-valor="${d.id}" data-valor="${d.monto}">✎</button></span></div>`
+      );
+    } else {
+      rows.push(payRow(deptoLabel(d), d.monto));
+    }
+  }
   if (s.plusDomingo) rows.push(payRow(`Plus domingo (${s.domingos})`, s.plusDomingo));
   if (s.plusFeriado) rows.push(payRow(`Plus feriado (${s.feriados})`, s.plusFeriado));
   for (const it of s.items) if (!esItemSuper(it.concepto)) rows.push(payItemRow(it));
@@ -958,7 +971,7 @@ function payCardHTML(s) {
 
 function buildWaMessage(s, from, to) {
   const L = [`*Liquidación ${s.nombre}* — ${fmtDate(from)} al ${fmtDate(to)}`];
-  for (const d of s.deptosDetalle) L.push(`${calleDepto(d)}: ${fmtMoney(d.monto)}`);
+  for (const d of s.deptosDetalle) L.push(`${deptoLabel(d)}: ${fmtMoney(d.monto)}`);
   if (s.plusDomingo) L.push(`Plus domingo (${s.domingos}): ${fmtMoney(s.plusDomingo)}`);
   if (s.plusFeriado) L.push(`Plus feriado (${s.feriados}): ${fmtMoney(s.plusFeriado)}`);
   for (const it of s.items) if (!esItemSuper(it.concepto)) L.push(`${it.concepto}: ${fmtMoney(it.monto)}`);
@@ -967,6 +980,38 @@ function buildWaMessage(s, from, to) {
   L.push("");
   L.push(`*TOTAL: ${fmtMoney(s.total)}*`);
   return L.join("\n");
+}
+
+// Editar el precio de una tarea manual desde la liquidacion.
+function openEditValorForm(id, actual, onDone) {
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+  overlay.innerHTML = `
+    <div class="modal">
+      <h3>Editar precio</h3>
+      <label>Valor / pago</label>
+      <input type="number" id="ev-valor" inputmode="numeric" value="${actual}" />
+      <div class="modal-actions">
+        <button class="btn-secondary" id="ev-cancel">Cancelar</button>
+        <button class="btn-primary" id="ev-save">Guardar</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  const close = () => overlay.remove();
+  overlay.onclick = (e) => { if (e.target === overlay) close(); };
+  overlay.querySelector("#ev-cancel").onclick = close;
+  overlay.querySelector("#ev-save").onclick = async () => {
+    const valor = Number(overlay.querySelector("#ev-valor").value) || 0;
+    try {
+      await fetchJSON(`${API}/manual-tasks`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, valor }) });
+      CACHE.tasksPayload = null;
+      close();
+      toast("Precio actualizado");
+      onDone();
+    } catch (err) {
+      toast("No se pudo actualizar: " + err.message);
+    }
+  };
 }
 
 function openItemForm(employeeId, onDone) {
@@ -1064,6 +1109,9 @@ async function renderPagos() {
         toast("Ítem eliminado");
         renderPagos();
       };
+    });
+    document.querySelectorAll("[data-edit-valor]").forEach((btn) => {
+      btn.onclick = () => openEditValorForm(btn.getAttribute("data-edit-valor"), Number(btn.getAttribute("data-valor")), renderPagos);
     });
     document.querySelectorAll("[data-wa]").forEach((btn) => {
       btn.onclick = () => {

@@ -170,6 +170,7 @@ main {
 .progress-fill { height: 100%; background: #5c9a2e; border-radius: 5px; transition: width 0.3s ease; }
 
 .link-danger { background: none; border: none; color: var(--red-fg); font-size: 13px; font-weight: 600; cursor: pointer; padding: 6px 4px; }
+.link-edit { background: none; border: none; color: var(--blue-fg); font-size: 13px; cursor: pointer; padding: 0 4px; }
 
 /* Modal de nueva tarea manual */
 .modal-overlay { position: fixed; inset: 0; background: rgba(28, 36, 48, 0.5); display: flex; align-items: center; justify-content: center; padding: 20px; z-index: 100; }

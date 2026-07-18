@@ -5,7 +5,8 @@
 // (overrides por id) y cuentan para el pago como un dia trabajado mas.
 //
 // GET    /api/manual-tasks   -> lista cruda de tareas manuales
-// POST   /api/manual-tasks   -> crea una  body: { date, tipo, propertyCode, assignedTo, notes? }
+// POST   /api/manual-tasks   -> crea una  body: { date, tipo, propertyCode, assignedTo, valor?, notes? }
+// PUT    /api/manual-tasks   -> edita una  body: { id, valor?, notes? }
 // DELETE /api/manual-tasks   -> borra una  body: { id }
 
 const properties = require("../../data/properties.json");
@@ -60,6 +61,30 @@ exports.handler = async (event) => {
     await setJSON("tasks-cache", payload);
 
     return json(200, { ok: true, task });
+  }
+
+  if (event.httpMethod === "PUT") {
+    let body;
+    try {
+      body = JSON.parse(event.body || "{}");
+    } catch {
+      return json(400, { error: "JSON invalido" });
+    }
+    if (!body.id) return json(400, { error: "Falta id" });
+
+    const list = await getJSON("manual-tasks", []);
+    const idx = list.findIndex((t) => t.id === body.id);
+    if (idx === -1) return json(404, { error: "No existe esa tarea" });
+    if (body.valor != null) list[idx].valor = Number(body.valor) || 0;
+    if (body.notes !== undefined) list[idx].notes = body.notes;
+    await setJSON("manual-tasks", list);
+
+    // reflejar el cambio en el cache para que la liquidacion lo tome ya.
+    const payload = await getJSON("tasks-cache", { tasks: [], checkins: [] });
+    payload.tasks = (payload.tasks || []).map((t) => (t.id === body.id ? { ...t, valor: list[idx].valor, notes: list[idx].notes } : t));
+    await setJSON("tasks-cache", payload);
+
+    return json(200, { ok: true, task: list[idx] });
   }
 
   if (event.httpMethod === "DELETE") {
