@@ -183,7 +183,8 @@ main {
 .pay-dates { display: flex; gap: 8px; margin-bottom: 8px; }
 .pay-dates label { flex: 1; display: flex; flex-direction: column; font-size: 12px; font-weight: 600; color: var(--text-secondary); gap: 4px; }
 .pay-dates input { border: 1px solid var(--border); border-radius: var(--radius); padding: 8px 10px; font-size: 14px; background: var(--surface); }
-.pay-presets { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+.pay-presets { display: flex; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
+.pay-presets button.on { background: var(--navy); color: #fff; border-color: var(--navy); }
 .pay-breakdown { margin-top: 8px; border-top: 1px solid var(--border); padding-top: 8px; }
 .pay-row { display: flex; justify-content: space-between; gap: 10px; font-size: 13px; color: var(--text-secondary); padding: 3px 0; }
 .pay-row span:last-child { font-weight: 600; color: var(--text); white-space: nowrap; }

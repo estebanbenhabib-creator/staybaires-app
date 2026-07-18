@@ -996,23 +996,30 @@ function openItemForm(employeeId, onDone) {
 async function renderPagos() {
   if (PAGOS_VIEW === "ajustes") return renderPagosAjustes();
   try {
+    const hoy = todayISO();
+    // Por defecto se abre en el pago del dia (Esteban paga por dia en general).
     if (!PAGOS_FROM) {
-      PAGOS_FROM = toISO(mondayOf(todayISO()));
-      PAGOS_TO = todayISO();
+      PAGOS_FROM = hoy;
+      PAGOS_TO = hoy;
     }
     setScope("Liquidación");
     const data = await fetchJSON(`${API}/payments?from=${PAGOS_FROM}&to=${PAGOS_TO}`);
     const config = data.config || {};
 
+    const rangoSemana = PAGOS_FROM === toISO(mondayOf(hoy)) && PAGOS_TO === hoy;
+    const rangoMes = PAGOS_FROM === hoy.slice(0, 8) + "01" && PAGOS_TO === hoy;
+    const rangoHoy = PAGOS_FROM === hoy && PAGOS_TO === hoy;
+
     setMain(`
+      <div class="pay-presets">
+        <button class="btn-secondary ${rangoHoy ? "on" : ""}" data-preset="hoy">Hoy</button>
+        <button class="btn-secondary ${rangoSemana ? "on" : ""}" data-preset="semana">Esta semana</button>
+        <button class="btn-secondary ${rangoMes ? "on" : ""}" data-preset="mes">Este mes</button>
+        <button class="btn-secondary" data-ajustes>⚙ Ajustes</button>
+      </div>
       <div class="pay-dates">
         <label>Desde<input type="date" id="pg-from" value="${PAGOS_FROM}" /></label>
         <label>Hasta<input type="date" id="pg-to" value="${PAGOS_TO}" /></label>
-      </div>
-      <div class="pay-presets">
-        <button class="btn-secondary" data-preset="semana">Esta semana</button>
-        <button class="btn-secondary" data-preset="mes">Este mes</button>
-        <button class="btn-secondary" data-ajustes>⚙ Ajustes</button>
       </div>
       ${data.summary.every((s) => s.total === 0) ? `<p class="muted">No hay tareas hechas en este rango. Las tareas se pagan cuando están marcadas como hechas.</p>` : ""}
       ${data.summary.map(payCardHTML).join("")}
@@ -1025,8 +1032,9 @@ async function renderPagos() {
     };
     document.getElementById("pg-from").onchange = (e) => setRange(e.target.value, PAGOS_TO);
     document.getElementById("pg-to").onchange = (e) => setRange(PAGOS_FROM, e.target.value);
-    document.querySelector('[data-preset="semana"]').onclick = () => setRange(toISO(mondayOf(todayISO())), todayISO());
-    document.querySelector('[data-preset="mes"]').onclick = () => setRange(todayISO().slice(0, 8) + "01", todayISO());
+    document.querySelector('[data-preset="hoy"]').onclick = () => setRange(hoy, hoy);
+    document.querySelector('[data-preset="semana"]').onclick = () => setRange(toISO(mondayOf(hoy)), hoy);
+    document.querySelector('[data-preset="mes"]').onclick = () => setRange(hoy.slice(0, 8) + "01", hoy);
     document.querySelector("[data-ajustes]").onclick = () => { PAGOS_VIEW = "ajustes"; renderPagos(); };
 
     document.querySelectorAll("[data-add-item]").forEach((btn) => {
