@@ -530,7 +530,7 @@ function eventCardHTML(t, ctx) {
 
   const sub = isCheckin
     ? `Llega huésped · ${platformName(t.platform)}`
-    : `${t.propertyName}${isManual && t.notes ? ` · ${t.notes}` : ""} · ${cleaner}`;
+    : `${cleaner}${isManual && t.notes ? ` · ${t.notes}` : ""}`;
 
   let statusCls, statusTxt;
   if (done) [statusCls, statusTxt] = ["green", "✓ Hecho"];
@@ -579,6 +579,7 @@ function calListaHTML(payload, ctx) {
   let html = "";
   let semanaActual = null;
   let diaActual = null;
+  let primeraSemana = true;
   for (const t of upcoming) {
     const lunes = mondayOf(t.date);
     const claveSemana = toISO(lunes);
@@ -587,7 +588,8 @@ function calListaHTML(payload, ctx) {
       diaActual = null;
       const domingo = new Date(lunes);
       domingo.setDate(domingo.getDate() + 6);
-      html += `<p class="ab-week">Semana ${isoWeekNum(t.date)} · ${fmtDayMonth(lunes)} al ${fmtDayMonth(domingo)}</p>`;
+      html += `<p class="ab-week${primeraSemana ? " first" : ""}">Semana ${isoWeekNum(t.date)} · ${fmtDayMonth(lunes)} al ${fmtDayMonth(domingo)}</p>`;
+      primeraSemana = false;
     }
     if (t.date !== diaActual) {
       diaActual = t.date;
