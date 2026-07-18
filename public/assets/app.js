@@ -256,10 +256,10 @@ function setScope(text) {
 }
 
 function renderTab(tab) {
-  // Hoy y Calendario usan su propio titular grande (estilo Airbnb), asi que
-  // les ocultamos la barra de titulo generica del shell.
+  // Todas las pantallas usan su propio titular grande (estilo Airbnb), asi que
+  // ocultamos la barra de titulo generica del shell.
   const bar = document.querySelector(".screen-title-bar");
-  if (bar) bar.style.display = tab === "hoy" || tab === "calendario" ? "none" : "";
+  if (bar) bar.style.display = "none";
   setMain(`<div class="empty-state">Cargando...</div>`);
   const handlers = {
     hoy: renderHoy,
@@ -294,15 +294,16 @@ async function renderHoy() {
       const pedidos = await fetchJSON(`${API}/lavanderia`);
       const pend = pedidos.filter((p) => p.status !== "completado");
       setMain(`
-        <p class="muted">Hola ${SESSION.name} · ${fmtDateHeader(hoy)}</p>
-        <div class="stat" style="margin-bottom:12px;"><p class="label">Pedidos pendientes</p><p class="value ${pend.length ? "warn" : ""}">${pend.length}</p></div>
+        <div class="ab-greeting">Hola ${SESSION.name} · ${fmtDateHeader(hoy)}</div>
+        <h1 class="ab-headline">${pend.length === 0 ? "No tenés pedidos" : `Tenés ${pend.length} pedido${pend.length !== 1 ? "s" : ""}`}</h1>
         ${
           pend.length === 0
-            ? `<div class="empty-state">No tenes pedidos pendientes.</div>`
-            : pend
+            ? `<div class="empty-state" style="margin-top:16px;">No tenés pedidos pendientes.</div>`
+            : `<div style="margin-top:8px;">` +
+              pend
                 .map(
                   (p) => `
-          <div class="card" style="margin-bottom:8px;">
+          <div class="card">
             <div class="card-row">
               <div>
                 <p class="card-title">${p.tipo === "retiro" ? "Retirar" : "Entregar"} · ${p.propertyName || "-"}</p>
@@ -312,7 +313,8 @@ async function renderHoy() {
             </div>
           </div>`
                 )
-                .join("")
+                .join("") +
+              `</div>`
         }
       `);
       return;
@@ -804,83 +806,42 @@ function attachCardHandlers(rerender) {
 async function renderTareas() {
   try {
     const payload = await getTasks();
-    let tasks = payload.tasks;
-    if (!canManageTasks()) {
-      tasks = tasks.filter((t) => t.assignedTo === SESSION.employeeId);
-      setScope(`Tus tareas`);
-    } else {
-      setScope(`${tasks.length} tareas`);
+    const hoy = todayISO();
+    const manage = canManageTasks();
+    const cleaners = (CONFIG.employees || []).filter((e) => e.rol === "empleada");
+    const { urgentIds } = buildDayIndex(payload);
+    const ctx = { puedeAsignar: manage, esAdmin: SESSION.role === "admin", cleaners, urgentIds };
+
+    // De hoy en adelante (para no arrastrar tareas viejas de los feeds).
+    let tasks = payload.tasks.filter((t) => t.date >= hoy);
+    if (!manage) tasks = tasks.filter((t) => t.assignedTo === SESSION.employeeId);
+    tasks.sort((a, b) => a.date.localeCompare(b.date));
+
+    const pendientes = tasks.filter((t) => t.status !== "hecha").length;
+    const headline = manage ? `${pendientes} tarea${pendientes !== 1 ? "s" : ""} pendiente${pendientes !== 1 ? "s" : ""}` : `Tenés ${pendientes} tarea${pendientes !== 1 ? "s" : ""}`;
+
+    // Agrupadas por dia con encabezado.
+    let lista = "";
+    let diaActual = null;
+    for (const t of tasks) {
+      if (t.date !== diaActual) {
+        diaActual = t.date;
+        lista += `<p class="ab-day ${t.date === hoy ? "today" : ""}">${t.date === hoy ? "Hoy · " : ""}${fmtDateHeader(t.date)}</p>`;
+      }
+      lista += eventCardHTML(t, ctx);
     }
 
-    const cleaners = (CONFIG.employees || []).filter((e) => e.rol === "empleada");
-
     setMain(`
-      ${SESSION.role === "admin" ? `<div class="refresh-row"><button class="btn-primary" data-nueva-tarea>+ Nueva tarea</button></div>` : ""}
-      ${canManageTasks() ? `<p class="muted">Todas las tareas quedan asignadas a Susana por defecto. Reasigná a Mari o Gisel cuando corresponda.</p>` : ""}
-      ${
-        tasks.length === 0
-          ? `<div class="empty-state">No hay tareas todavia.</div>`
-          : tasks
-              .map((t) => {
-                const assignedLabel = employeeName(t.assignedTo);
-                return `
-        <div class="card" data-task="${t.id}">
-          <div class="card-row">
-            <div>
-              <p class="card-title">${t.direccion || t.propertyName}</p>
-              <p class="card-sub">${t.direccion ? t.propertyName : t.barrio}</p>
-              <p class="card-sub">${assignedLabel} · ${fmtDate(t.date)}${t.source === "manual" ? ` · ${t.tipo}` : ""}</p>
-            </div>
-            ${t.source === "manual" && t.status !== "hecha" ? `<span class="badge violet">${t.tipo}</span>` : statusBadge(t.status)}
-          </div>
-          <div style="display:flex; gap:8px; margin-top:10px; flex-wrap:wrap;">
-            ${
-              t.status !== "hecha"
-                ? `<button class="btn-secondary" data-mark-done="${t.id}">Marcar hecha</button>`
-                : ""
-            }
-            ${
-              canManageTasks()
-                ? `<select class="badge-select" data-reassign="${t.id}">
-                    ${cleaners.map((c) => `<option value="${c.id}" ${c.id === t.assignedTo ? "selected" : ""}>${c.nombre}</option>`).join("")}
-                  </select>`
-                : ""
-            }
-          </div>
-        </div>`;
-              })
-              .join("")
-      }
+      <h1 class="ab-headline">Tareas</h1>
+      <div class="ab-sub">${headline}${manage ? " · asignación por defecto a Susana" : ""}</div>
+      ${SESSION.role === "admin" ? `<div style="margin:14px 0 4px;"><button class="btn-primary" data-nueva-tarea>+ Nueva tarea</button></div>` : ""}
+      ${tasks.length === 0 ? `<div class="empty-state" style="margin-top:16px;">No hay tareas pendientes.</div>` : lista}
     `);
 
     if (SESSION.role === "admin") {
       document.querySelector("[data-nueva-tarea]").onclick = () => openNuevaTareaForm(renderTareas);
     }
-
-    document.querySelectorAll("[data-mark-done]").forEach((btn) => {
-      btn.onclick = async () => {
-        const id = btn.getAttribute("data-mark-done");
-        const body = { id, status: "hecha" };
-        await fetchJSON(`${API}/tasks`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-        CACHE.tasksPayload = null;
-        toast("Tarea marcada como hecha");
-        renderTareas();
-      };
-    });
-
-    document.querySelectorAll("[data-reassign]").forEach((sel) => {
-      sel.onchange = async () => {
-        const id = sel.getAttribute("data-reassign");
-        await fetchJSON(`${API}/tasks`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ id, assignedTo: sel.value }),
-        });
-        CACHE.tasksPayload = null;
-        toast("Reasignado a " + employeeName(sel.value));
-        renderTareas();
-      };
-    });
+    attachCardHandlers(renderTareas);
   } catch (err) {
     setMain(`<div class="empty-state">Error cargando tareas: ${err.message}</div>`);
   }
@@ -900,37 +861,37 @@ async function renderEmpleadas() {
     const lavanderia = CONFIG.employees.filter((e) => e.rol === "lavanderia");
     const summaryFor = (id) => paymentsData.summary.find((s) => s.employeeId === id);
 
+    const personaCard = (e, subtitulo, extra, badge) => {
+      const [abg, afg] = avatarColors(e.id);
+      return `
+        <div class="card">
+          <div class="card-row">
+            <div style="display:flex; gap:12px; align-items:center; min-width:0;">
+              <div class="ev-avatar" style="background:${abg}; color:${afg};">${e.nombre.charAt(0)}</div>
+              <div style="min-width:0;">
+                <p class="card-title">${e.nombre}</p>
+                <p class="card-sub">${subtitulo}</p>
+              </div>
+            </div>
+            ${badge || ""}
+          </div>
+          ${extra ? `<p class="card-sub" style="margin-top:10px;">${extra}</p>` : ""}
+        </div>`;
+    };
+
     setMain(`
-      <p class="muted">Días trabajados y total de este mes</p>
+      <h1 class="ab-headline">Colaboradores</h1>
+      <div class="ab-sub">Días trabajados y total de este mes</div>
+      <div style="margin-top:16px;">
       ${cleaners
         .map((e) => {
           const s = summaryFor(e.id);
-          return `
-        <div class="card">
-          <div class="card-row">
-            <div>
-              <p class="card-title">${e.nombre}</p>
-              <p class="card-sub">Limpieza · $${e.tarifaPorDia?.toLocaleString("es-AR") || "-"}/dia base</p>
-            </div>
-            <span class="badge ${jerarquiaBadge[e.jerarquia] || "blue"}">${jerarquiaLabel[e.jerarquia] || ""}</span>
-          </div>
-          <p class="card-sub" style="margin-top:8px;">${s ? `${s.totalDias} días trabajados · ${fmtMoney(s.total)}` : "Sin datos todavia"}</p>
-        </div>`;
+          const badge = `<span class="badge ${jerarquiaBadge[e.jerarquia] || "blue"}">${jerarquiaLabel[e.jerarquia] || ""}</span>`;
+          return personaCard(e, `Limpieza · $${e.tarifaPorDia?.toLocaleString("es-AR") || "-"}/día`, s ? `${s.totalDias} días trabajados · ${fmtMoney(s.total)}` : "Sin datos todavía", badge);
         })
         .join("")}
-      ${lavanderia
-        .map(
-          (e) => `
-        <div class="card">
-          <div class="card-row">
-            <div>
-              <p class="card-title">${e.nombre}</p>
-              <p class="card-sub">Lavanderia · por transferencia</p>
-            </div>
-          </div>
-        </div>`
-        )
-        .join("")}
+      ${lavanderia.map((e) => personaCard(e, "Lavandería · por transferencia", "", "")).join("")}
+      </div>
     `);
   } catch (err) {
     setMain(`<div class="empty-state">Error: ${err.message}</div>`);
@@ -1094,7 +1055,9 @@ async function renderPagos() {
     const rangoHoy = PAGOS_FROM === hoy && PAGOS_TO === hoy;
 
     setMain(`
-      <div class="pay-presets">
+      <h1 class="ab-headline">Pagos</h1>
+      <div class="ab-sub">Liquidación por período · se paga lo marcado como hecho</div>
+      <div class="pay-presets" style="margin-top:16px;">
         <button class="btn-secondary ${rangoHoy ? "on" : ""}" data-preset="hoy">Hoy</button>
         <button class="btn-secondary ${rangoSemana ? "on" : ""}" data-preset="semana">Esta semana</button>
         <button class="btn-secondary ${rangoMes ? "on" : ""}" data-preset="mes">Este mes</button>
@@ -1160,7 +1123,8 @@ async function renderPagosAjustes() {
 
     const render = () => {
       setMain(`
-        <div class="refresh-row"><button class="btn-secondary" data-volver>‹ Volver</button></div>
+        <div class="ab-toolbar"><button class="btn-secondary" data-volver>‹ Volver</button></div>
+        <h1 class="ab-headline">Ajustes de pago</h1>
 
         <p class="section-label">Viático por día (por colaboradora)</p>
         <div class="card">
@@ -1260,10 +1224,10 @@ async function renderMisPagos() {
   try {
     const pedidos = await fetchJSON(`${API}/lavanderia`);
     const propios = pedidos.filter((p) => p.status === "completado");
-    setScope("Tus pedidos");
     setMain(`
-      <p class="muted">Los montos de lavanderia se siguen registrando por transferencia aparte. Aca queda el conteo de pedidos.</p>
-      <div class="stat"><p class="label">Pedidos completados</p><p class="value">${propios.length}</p></div>
+      <h1 class="ab-headline">Mis pagos</h1>
+      <div class="ab-sub">Los montos se registran por transferencia aparte; acá queda el conteo</div>
+      <div class="stat" style="margin-top:16px;"><p class="label">Pedidos completados</p><p class="value">${propios.length}</p></div>
     `);
   } catch (err) {
     setMain(`<div class="empty-state">Error: ${err.message}</div>`);
@@ -1275,8 +1239,18 @@ async function renderMisPagos() {
 async function renderInsumos() {
   try {
     const items = await fetchJSON(`${API}/insumos`);
-    setScope(`${items.length} items`);
+    const bajos = items.filter((i) => i.stockActual < i.stockMinimo);
     setMain(`
+      <h1 class="ab-headline">Insumos</h1>
+      <div class="ab-sub">${items.length} productos</div>
+      ${
+        bajos.length
+          ? `<div class="card" style="margin-top:16px; border-color:#f2d2d2; background:#fdf4f4;">
+              <p class="card-title" style="color:var(--red-fg);">Faltan ${bajos.length} insumo${bajos.length !== 1 ? "s" : ""}</p>
+              <p class="card-sub">${bajos.map((i) => i.producto).join(", ")}</p>
+            </div>`
+          : `<div style="margin-top:8px;"></div>`
+      }
       ${items
         .map((i) => {
           const estado = i.stockActual <= i.stockMinimo / 2 ? ["red", "Bajo"] : i.stockActual < i.stockMinimo ? ["amber", "Medio"] : ["green", "Ok"];
@@ -1289,8 +1263,8 @@ async function renderInsumos() {
             </div>
             <span class="badge ${estado[0]}">${estado[1]}</span>
           </div>
-          <div style="display:flex; align-items:center; gap:8px; margin-top:10px;">
-            <input type="number" min="0" value="${i.stockActual}" data-stock-input="${i.id}" style="width:70px; border:1px solid var(--border); border-radius:var(--radius); padding:6px 8px;" />
+          <div style="display:flex; align-items:center; gap:8px; margin-top:12px;">
+            <input type="number" min="0" value="${i.stockActual}" data-stock-input="${i.id}" style="width:80px; border:1px solid var(--border); border-radius:12px; padding:9px 12px; font-size:15px;" />
             <button class="btn-secondary" data-save-stock="${i.id}">Guardar stock</button>
           </div>
         </div>`;
@@ -1322,10 +1296,12 @@ async function renderInsumos() {
 async function renderLavanderia() {
   try {
     const pedidos = await fetchJSON(`${API}/lavanderia`);
-    setScope(`${pedidos.filter((p) => p.status === "pendiente").length} pendientes`);
+    const pend = pedidos.filter((p) => p.status === "pendiente").length;
 
     setMain(`
-      <p class="muted">Pedidos de retiro / entrega</p>
+      <h1 class="ab-headline">Lavandería</h1>
+      <div class="ab-sub">${pend} pendiente${pend !== 1 ? "s" : ""} · pedidos de retiro / entrega</div>
+      <div style="margin-top:16px;">
       ${
         pedidos.length === 0
           ? `<div class="empty-state">No hay pedidos cargados.</div>`
@@ -1340,11 +1316,12 @@ async function renderLavanderia() {
             </div>
             <span class="badge ${p.status === "completado" ? "green" : "amber"}">${p.status === "completado" ? "Completado" : "Pendiente"}</span>
           </div>
-          ${p.status !== "completado" ? `<button class="btn-secondary" style="margin-top:8px;" data-complete="${p.id}">Marcar completado</button>` : ""}
+          ${p.status !== "completado" ? `<button class="btn-secondary" style="margin-top:10px;" data-complete="${p.id}">Marcar completado</button>` : ""}
         </div>`
               )
               .join("")
       }
+      </div>
     `);
 
     document.querySelectorAll("[data-complete]").forEach((btn) => {

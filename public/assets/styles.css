@@ -100,10 +100,11 @@ main {
 
 .card {
   background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 12px 14px;
-  margin-bottom: 10px;
+  border: 1px solid #ececec;
+  border-radius: 16px;
+  padding: 14px 16px;
+  margin-bottom: 12px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
 }
 
 .card-row {
@@ -113,9 +114,9 @@ main {
   gap: 10px;
 }
 
-.card-title { font-weight: 600; font-size: 14px; margin: 0; }
-.card-sub { font-size: 12px; color: var(--text-secondary); margin: 3px 0 0; }
-.muted { font-size: 12px; color: var(--text-muted); margin: 0 0 10px; }
+.card-title { font-weight: 700; font-size: 17px; margin: 0; line-height: 1.25; }
+.card-sub { font-size: 14px; color: var(--text-secondary); margin: 3px 0 0; }
+.muted { font-size: 13px; color: var(--text-muted); margin: 0 0 10px; }
 
 .badge {
   font-size: 11px;
