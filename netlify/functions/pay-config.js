@@ -21,7 +21,7 @@ exports.handler = async (event) => {
       return json(400, { error: "JSON invalido" });
     }
     const cfg = {
-      viatico: Number(body.viatico) || 0,
+      viaticoDia: body.viaticoDia && typeof body.viaticoDia === "object" ? body.viaticoDia : {},
       plusDomingo: Number(body.plusDomingo) || 0,
       plusFeriado: Number(body.plusFeriado) || 0,
       feriados: Array.isArray(body.feriados) ? body.feriados : [],

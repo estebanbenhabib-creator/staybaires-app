@@ -1,18 +1,19 @@
 // Liquidacion de pago a las colaboradoras. Se calcula sobre las tareas
 // MARCADAS COMO HECHAS en un rango de fechas, y para cada colaboradora suma:
-//   base por dia:  dias trabajados x tarifaPorDia
+//   viatico fijo por dia: dias trabajados x monto por dia (Susana $10.000,
+//     el resto $5.000 por defecto; editable por colaboradora en Ajustes)
 //   + valor por depto: por cada limpieza hecha, el valor del depto (Ajustes)
-//   + viatico: dias trabajados x monto de viatico (Ajustes)
 //   + plus domingo: dias trabajados que caen domingo x plusDomingo (Ajustes)
 //   + plus feriado: dias trabajados marcados feriado x plusFeriado (Ajustes)
-//   + items manuales: viaticos extra, reembolsos de super/articulos, plus
-//     suciedad, etc., que carga el admin (concepto + monto).
+//   + items manuales: reembolsos de super/articulos, plus suciedad, etc., que
+//     carga el admin (concepto + monto).
+// No hay "base por dia" aparte: el pago fijo por dia ES el viatico.
 //
-// Los montos (tarifa por depto, viatico, plus, feriados) viven en el blob de
-// configuracion "pay-config"; los items en "pay-items". Un "dia trabajado" es
-// una fecha unica con al menos una tarea hecha.
+// Los montos (viatico por dia, valor por depto, plus, feriados, telefonos)
+// viven en el blob "pay-config"; los items en "pay-items". Un "dia trabajado"
+// es una fecha unica con al menos una tarea hecha.
 
-const DEFAULT_CONFIG = { viatico: 0, plusDomingo: 0, plusFeriado: 0, feriados: [], valorDepto: {}, telefonos: {} };
+const DEFAULT_CONFIG = { viaticoDia: {}, plusDomingo: 0, plusFeriado: 0, feriados: [], valorDepto: {}, telefonos: {} };
 
 function esDomingo(iso) {
   return new Date(iso + "T00:00:00").getDay() === 0;
@@ -30,8 +31,6 @@ function computeLiquidacion(tasks, employees, config, items, from, to) {
     // Tareas de limpieza (checkout o manual) hechas por esta colaboradora en el rango.
     const suyas = tasks.filter((t) => t.assignedTo === emp.id && t.status === "hecha" && t.type !== "checkin" && inRange(t.date));
     const dias = Array.from(new Set(suyas.map((t) => t.date))).sort();
-    const tarifa = emp.tarifaPorDia || 0;
-    const baseDias = dias.length * tarifa;
 
     const deptosDetalle = suyas.map((t) => ({
       nombre: t.propertyName,
@@ -41,7 +40,11 @@ function computeLiquidacion(tasks, employees, config, items, from, to) {
     }));
     const valorDeptos = deptosDetalle.reduce((s, d) => s + d.monto, 0);
 
-    const viatico = dias.length * (cfg.viatico || 0);
+    // Viatico fijo por dia: usa el monto de Ajustes si esta cargado, si no cae
+    // al tarifaPorDia de la persona (Susana 10.000, el resto 5.000).
+    const viaticoDia = cfg.viaticoDia && cfg.viaticoDia[emp.id] != null ? Number(cfg.viaticoDia[emp.id]) : emp.tarifaPorDia || 0;
+    const viatico = dias.length * viaticoDia;
+
     const domingos = dias.filter(esDomingo);
     const plusDomingo = domingos.length * (cfg.plusDomingo || 0);
     const feriadosTrab = dias.filter((d) => feriados.has(d));
@@ -50,19 +53,17 @@ function computeLiquidacion(tasks, employees, config, items, from, to) {
     const misItems = (items || []).filter((it) => it.employeeId === emp.id && inRange(it.date));
     const itemsTotal = misItems.reduce((s, it) => s + (Number(it.monto) || 0), 0);
 
-    const total = baseDias + valorDeptos + viatico + plusDomingo + plusFeriado + itemsTotal;
+    const total = viatico + valorDeptos + plusDomingo + plusFeriado + itemsTotal;
 
     results.push({
       employeeId: emp.id,
       nombre: emp.nombre,
-      tarifaPorDia: tarifa,
       dias,
       totalDias: dias.length,
-      baseDias,
       cantDeptos: suyas.length,
       deptosDetalle,
       valorDeptos,
-      viaticoDia: cfg.viatico || 0,
+      viaticoDia,
       viatico,
       domingos: domingos.length,
       plusDomingo,

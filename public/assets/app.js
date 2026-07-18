@@ -921,9 +921,8 @@ function payRow(label, monto) {
 }
 
 function payCardHTML(s) {
-  const rows = [payRow(`Días trabajados: ${s.totalDias} × ${fmtMoney(s.tarifaPorDia)}`, s.baseDias)];
+  const rows = [payRow(`Viático: ${s.totalDias} día${s.totalDias !== 1 ? "s" : ""} × ${fmtMoney(s.viaticoDia)}`, s.viatico)];
   if (s.valorDeptos) rows.push(payRow(`Deptos limpiados (${s.cantDeptos})`, s.valorDeptos));
-  if (s.viatico) rows.push(payRow(`Viáticos (${s.totalDias} día${s.totalDias !== 1 ? "s" : ""})`, s.viatico));
   if (s.plusDomingo) rows.push(payRow(`Plus domingo (${s.domingos})`, s.plusDomingo));
   if (s.plusFeriado) rows.push(payRow(`Plus feriado (${s.feriados})`, s.plusFeriado));
   for (const it of s.items) {
@@ -942,9 +941,8 @@ function payCardHTML(s) {
 
 function buildWaMessage(s, from, to) {
   const L = [`*Liquidación ${s.nombre}* — ${fmtDate(from)} al ${fmtDate(to)}`];
-  L.push(`Días trabajados: ${s.totalDias} × ${fmtMoney(s.tarifaPorDia)} = ${fmtMoney(s.baseDias)}`);
+  L.push(`Viático: ${s.totalDias} día${s.totalDias !== 1 ? "s" : ""} × ${fmtMoney(s.viaticoDia)} = ${fmtMoney(s.viatico)}`);
   if (s.valorDeptos) L.push(`Deptos limpiados (${s.cantDeptos}): ${fmtMoney(s.valorDeptos)}`);
-  if (s.viatico) L.push(`Viáticos (${s.totalDias} día${s.totalDias !== 1 ? "s" : ""}): ${fmtMoney(s.viatico)}`);
   if (s.plusDomingo) L.push(`Plus domingo (${s.domingos}): ${fmtMoney(s.plusDomingo)}`);
   if (s.plusFeriado) L.push(`Plus feriado (${s.feriados}): ${fmtMoney(s.plusFeriado)}`);
   for (const it of s.items) L.push(`${it.concepto}: ${fmtMoney(it.monto)}`);
@@ -1070,10 +1068,18 @@ async function renderPagosAjustes() {
       setMain(`
         <div class="refresh-row"><button class="btn-secondary" data-volver>‹ Volver</button></div>
 
-        <p class="section-label">Montos generales</p>
+        <p class="section-label">Viático por día (por colaboradora)</p>
         <div class="card">
-          <label class="aj-label">Viático por día trabajado</label>
-          <input type="number" id="aj-viatico" value="${cfg.viatico || 0}" />
+          ${cleaners
+            .map(
+              (e) => `<label class="aj-label">${e.nombre}</label>
+              <input type="number" data-viatico="${e.id}" value="${cfg.viaticoDia && cfg.viaticoDia[e.id] != null ? cfg.viaticoDia[e.id] : e.tarifaPorDia || 0}" />`
+            )
+            .join("")}
+        </div>
+
+        <p class="section-label">Plus</p>
+        <div class="card">
           <label class="aj-label">Plus por domingo</label>
           <input type="number" id="aj-domingo" value="${cfg.plusDomingo || 0}" />
           <label class="aj-label">Plus por feriado</label>
@@ -1130,8 +1136,10 @@ async function renderPagosAjustes() {
         document.querySelectorAll("[data-tel]").forEach((i) => (telefonos[i.getAttribute("data-tel")] = i.value.trim()));
         const valorDepto = {};
         document.querySelectorAll("[data-depto]").forEach((i) => (valorDepto[i.getAttribute("data-depto")] = Number(i.value) || 0));
+        const viaticoDia = {};
+        document.querySelectorAll("[data-viatico]").forEach((i) => (viaticoDia[i.getAttribute("data-viatico")] = Number(i.value) || 0));
         const body = {
-          viatico: Number(document.getElementById("aj-viatico").value) || 0,
+          viaticoDia,
           plusDomingo: Number(document.getElementById("aj-domingo").value) || 0,
           plusFeriado: Number(document.getElementById("aj-feriado").value) || 0,
           feriados: FERIADOS_EDIT,

@@ -12,6 +12,7 @@ exports.handler = async () => {
           rol: e.rol,
           jerarquia: e.jerarquia,
           esRotativa: !!e.esRotativa,
+          tarifaPorDia: e.tarifaPorDia || 0,
           requiresPassword: !!e.password,
     }));
     return {
