@@ -1,20 +1,25 @@
-// GET  /.netlify/functions/insumos           -> lista de stock actual
-// POST /.netlify/functions/insumos           -> agrega o actualiza un item
-//      body: { id, producto, categoria, ubicacion, stockActual, stockMinimo }
-// La primera vez que se pide, si no hay nada guardado, se siembra con
-// data/insumos-inicial.json.
+// Insumos = lista de faltantes por departamento (lista de compras). No hay
+// deposito central: cuando algo se acaba en un depto, alguien (las chicas o
+// Esteban) lo marca como faltante; cuando se compra, se saca de la lista.
+//
+// GET    /api/insumos   -> lista de faltantes pendientes
+// POST   /api/insumos   -> marca un faltante  body: { propertyCode, insumo, categoria, notes? }
+// DELETE /api/insumos   -> saca un faltante (ya comprado)  body: { id }
 
-const seed = require("../../data/insumos-inicial.json");
+const properties = require("../../data/properties.json");
 const { getJSON, setJSON } = require("../lib/store");
+
+function nuevaId() {
+  return "flt_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+}
+
+function json(code, obj) {
+  return { statusCode: code, headers: { "Content-Type": "application/json" }, body: JSON.stringify(obj) };
+}
 
 exports.handler = async (event) => {
   if (event.httpMethod === "GET") {
-    let items = await getJSON("insumos", null);
-    if (!items) {
-      items = seed;
-      await setJSON("insumos", items);
-    }
-    return { statusCode: 200, headers: { "Content-Type": "application/json" }, body: JSON.stringify(items) };
+    return json(200, await getJSON("insumos-faltantes", []));
   }
 
   if (event.httpMethod === "POST") {
@@ -22,25 +27,39 @@ exports.handler = async (event) => {
     try {
       body = JSON.parse(event.body || "{}");
     } catch {
-      return { statusCode: 400, body: JSON.stringify({ error: "JSON invalido" }) };
+      return json(400, { error: "JSON invalido" });
     }
-    if (!body.id || !body.producto) {
-      return { statusCode: 400, body: JSON.stringify({ error: "Falta id o producto" }) };
+    if (!body.propertyCode || !body.insumo) {
+      return json(400, { error: "Faltan propertyCode o insumo" });
     }
-    let items = await getJSON("insumos", seed);
-    const idx = items.findIndex((i) => i.id === body.id);
+    const prop = properties.find((p) => p.codigo === body.propertyCode);
     const item = {
-      id: body.id,
-      producto: body.producto,
-      categoria: body.categoria || "limpieza",
-      ubicacion: body.ubicacion || "",
-      stockActual: Number(body.stockActual) || 0,
-      stockMinimo: Number(body.stockMinimo) || 0,
+      id: nuevaId(),
+      propertyCode: body.propertyCode,
+      propertyName: prop ? prop.nombre : body.propertyName || "",
+      direccion: prop ? prop.direccion || "" : "",
+      insumo: body.insumo,
+      categoria: body.categoria || "",
+      notes: body.notes || null,
+      fecha: new Date().toISOString().slice(0, 10),
     };
-    if (idx >= 0) items[idx] = item;
-    else items.push(item);
-    await setJSON("insumos", items);
-    return { statusCode: 200, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ok: true, items }) };
+    const list = await getJSON("insumos-faltantes", []);
+    list.push(item);
+    await setJSON("insumos-faltantes", list);
+    return json(200, { ok: true, item });
+  }
+
+  if (event.httpMethod === "DELETE") {
+    let body;
+    try {
+      body = JSON.parse(event.body || "{}");
+    } catch {
+      return json(400, { error: "JSON invalido" });
+    }
+    if (!body.id) return json(400, { error: "Falta id" });
+    const list = await getJSON("insumos-faltantes", []);
+    await setJSON("insumos-faltantes", list.filter((i) => i.id !== body.id));
+    return json(200, { ok: true });
   }
 
   return { statusCode: 405, body: "Method not allowed" };

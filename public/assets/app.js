@@ -14,6 +14,14 @@ const TITLES = {
 // sumar uno nuevo en el futuro, agregarlo a esta lista.
 const TIPOS_MANUAL = ["Inspección", "Limpieza extra"];
 
+// Catalogo de insumos por categoria (para el selector al marcar un faltante).
+// Agregar/quitar productos es editar esta lista.
+const INSUMOS_CATALOGO = {
+  Limpieza: ["Líquido de pisos", "Cif", "Lavandina", "Trapo de piso"],
+  Cocina: ["Virulana", "Esponja", "Balerina", "Papel higiénico", "Papel de cocina"],
+  Baño: ["Jabón de manos", "Shampoo", "Crema de enjuague"],
+};
+
 let SESSION = safeParse(localStorage.getItem("sb-session"));
 let CONFIG = null;
 let CURRENT_TAB = null;
@@ -340,13 +348,12 @@ async function renderHoy() {
 
     let extras = "";
     if (manage) {
-      const [insumos, pedidos] = await Promise.all([fetchJSON(`${API}/insumos`), fetchJSON(`${API}/lavanderia`)]);
-      const bajos = insumos.filter((i) => i.stockActual < i.stockMinimo);
+      const [faltantes, pedidos] = await Promise.all([fetchJSON(`${API}/insumos`), fetchJSON(`${API}/lavanderia`)]);
       const lavPend = pedidos.filter((p) => p.status !== "completado");
       extras = `
         <p class="ab-section">Resumen</p>
         <div class="stat-grid" style="margin-top:10px;">
-          <div class="stat"><p class="label">Insumos bajos</p><p class="value ${bajos.length ? "warn" : ""}">${bajos.length}</p></div>
+          <div class="stat"><p class="label">Insumos por comprar</p><p class="value ${faltantes.length ? "warn" : ""}">${faltantes.length}</p></div>
           <div class="stat"><p class="label">Lavanderia pendiente</p><p class="value">${lavPend.length}</p></div>
         </div>`;
     }
@@ -1238,57 +1245,97 @@ async function renderMisPagos() {
 
 async function renderInsumos() {
   try {
-    const items = await fetchJSON(`${API}/insumos`);
-    const bajos = items.filter((i) => i.stockActual < i.stockMinimo);
+    const faltantes = await fetchJSON(`${API}/insumos`);
+
+    // Agrupar por depto (para saber qué comprar y a dónde va).
+    const byDepto = new Map();
+    for (const f of faltantes) {
+      if (!byDepto.has(f.propertyCode)) byDepto.set(f.propertyCode, { nombre: f.propertyName, direccion: f.direccion, items: [] });
+      byDepto.get(f.propertyCode).items.push(f);
+    }
+
+    const deptoCard = (g) => `
+      <div class="card">
+        <p class="card-title">${g.direccion ? g.direccion.split(",")[0].trim() : g.nombre}</p>
+        <p class="card-sub" style="margin-bottom:6px;">${g.nombre}</p>
+        ${g.items
+          .map(
+            (f) => `
+          <div class="ins-row">
+            <div><span class="ins-cat">${f.categoria || "-"}</span> ${f.insumo}</div>
+            <button class="btn-secondary" data-comprado="${f.id}">Comprado</button>
+          </div>`
+          )
+          .join("")}
+      </div>`;
+
     setMain(`
       <h1 class="ab-headline">Insumos</h1>
-      <div class="ab-sub">${items.length} productos</div>
-      ${
-        bajos.length
-          ? `<div class="card" style="margin-top:16px; border-color:#f2d2d2; background:#fdf4f4;">
-              <p class="card-title" style="color:var(--red-fg);">Faltan ${bajos.length} insumo${bajos.length !== 1 ? "s" : ""}</p>
-              <p class="card-sub">${bajos.map((i) => i.producto).join(", ")}</p>
-            </div>`
-          : `<div style="margin-top:8px;"></div>`
-      }
-      ${items
-        .map((i) => {
-          const estado = i.stockActual <= i.stockMinimo / 2 ? ["red", "Bajo"] : i.stockActual < i.stockMinimo ? ["amber", "Medio"] : ["green", "Ok"];
-          return `
-        <div class="card">
-          <div class="card-row">
-            <div>
-              <p class="card-title">${i.producto}</p>
-              <p class="card-sub">${i.ubicacion || i.categoria}</p>
-            </div>
-            <span class="badge ${estado[0]}">${estado[1]}</span>
-          </div>
-          <div style="display:flex; align-items:center; gap:8px; margin-top:12px;">
-            <input type="number" min="0" value="${i.stockActual}" data-stock-input="${i.id}" style="width:80px; border:1px solid var(--border); border-radius:12px; padding:9px 12px; font-size:15px;" />
-            <button class="btn-secondary" data-save-stock="${i.id}">Guardar stock</button>
-          </div>
-        </div>`;
-        })
-        .join("")}
+      <div class="ab-sub">${faltantes.length} por comprar · lo que falta en cada depto</div>
+      <div style="margin:14px 0 4px;"><button class="btn-primary" data-nuevo-faltante>+ Marcar faltante</button></div>
+      ${faltantes.length === 0 ? `<div class="empty-state" style="margin-top:16px;">No falta nada por ahora.</div>` : `<div style="margin-top:8px;">${Array.from(byDepto.values()).map(deptoCard).join("")}</div>`}
     `);
 
-    document.querySelectorAll("[data-save-stock]").forEach((btn) => {
+    document.querySelector("[data-nuevo-faltante]").onclick = () => openFaltanteForm(renderInsumos);
+
+    document.querySelectorAll("[data-comprado]").forEach((btn) => {
       btn.onclick = async () => {
-        const id = btn.getAttribute("data-save-stock");
-        const item = items.find((i) => i.id === id);
-        const input = document.querySelector(`[data-stock-input="${id}"]`);
-        await fetchJSON(`${API}/insumos`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ...item, stockActual: Number(input.value) }),
-        });
-        toast("Stock actualizado");
+        await fetchJSON(`${API}/insumos`, { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: btn.getAttribute("data-comprado") }) });
+        toast("Marcado como comprado");
         renderInsumos();
       };
     });
   } catch (err) {
     setMain(`<div class="empty-state">Error: ${err.message}</div>`);
   }
+}
+
+// Formulario para marcar que falta un insumo en un depto. Lo puede usar
+// cualquiera (admin o las colaboradoras).
+function openFaltanteForm(onDone) {
+  const props = CONFIG.properties || [];
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+  const opciones = Object.entries(INSUMOS_CATALOGO)
+    .map(([cat, items]) => `<optgroup label="${cat}">${items.map((i) => `<option value="${i}" data-cat="${cat}">${i}</option>`).join("")}</optgroup>`)
+    .join("");
+  overlay.innerHTML = `
+    <div class="modal">
+      <h3>Marcar faltante</h3>
+      <label>Departamento</label>
+      <select id="fl-prop">${props.map((p) => `<option value="${p.codigo}">${p.nombre} — ${p.direccion || p.barrio}</option>`).join("")}</select>
+      <label>Insumo</label>
+      <select id="fl-insumo">${opciones}</select>
+      <label>Nota (opcional)</label>
+      <input type="text" id="fl-nota" placeholder="Ej: queda poco" />
+      <div class="modal-actions">
+        <button class="btn-secondary" id="fl-cancel">Cancelar</button>
+        <button class="btn-primary" id="fl-save">Marcar</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  const close = () => overlay.remove();
+  overlay.onclick = (e) => { if (e.target === overlay) close(); };
+  overlay.querySelector("#fl-cancel").onclick = close;
+  overlay.querySelector("#fl-save").onclick = async () => {
+    const propSel = overlay.querySelector("#fl-prop");
+    const insSel = overlay.querySelector("#fl-insumo");
+    const opt = insSel.options[insSel.selectedIndex];
+    const body = {
+      propertyCode: propSel.value,
+      insumo: insSel.value,
+      categoria: opt.getAttribute("data-cat") || "",
+      notes: overlay.querySelector("#fl-nota").value.trim() || null,
+    };
+    try {
+      await fetchJSON(`${API}/insumos`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      close();
+      toast("Faltante marcado");
+      onDone();
+    } catch (err) {
+      toast("No se pudo marcar: " + err.message);
+    }
+  };
 }
 
 // ---------- Lavanderia ----------
