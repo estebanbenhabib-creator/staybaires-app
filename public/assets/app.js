@@ -14,10 +14,12 @@ const TITLES = {
 // sumar uno nuevo en el futuro, agregarlo a esta lista.
 const TIPOS_MANUAL = ["Inspección", "Limpieza extra"];
 
-// Fotos de las colaboradoras (avatar). Se llena cuando haya archivos en
-// public/avatars/. Mientras esté vacío, el avatar muestra la inicial.
-// Ej: { susana: "/avatars/susana.jpg", mari: "/avatars/mari.jpg" }
-const AVATARS = {};
+// Fotos de las colaboradoras (avatar). Si no hay foto para un id, se muestra
+// la inicial. (Gisel y Lujan quedan con inicial hasta tener un retrato.)
+const AVATARS = {
+  susana: "/avatars/susana.jpg",
+  mari: "/avatars/mari.jpg",
+};
 
 // Catalogo de insumos por categoria (para el selector al marcar un faltante).
 // Agregar/quitar productos es editar esta lista.
