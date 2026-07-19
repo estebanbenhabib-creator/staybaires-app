@@ -219,6 +219,12 @@ main {
 .ab-iconbtn { border: none; background: transparent; color: var(--navy); font-size: 22px; cursor: pointer; padding: 4px 8px; line-height: 1; }
 
 .ev-card { display: flex; gap: 14px; align-items: flex-start; background: var(--surface); border: 1px solid #ececec; border-radius: 16px; padding: 14px 16px; margin-bottom: 12px; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05); cursor: pointer; }
+.ev-card.ev-checkin { background: #f2f8ea; border-color: #dcebc9; }
+.ev-card.ev-checkout { background: #eef5fc; border-color: #cfe3f6; }
+.ev-card.ev-urgent { background: #fdf1f1; border-color: #f4d4d4; }
+.ev-card.ev-manual { background: #f4f0fc; border-color: #e2d8f5; }
+.ev-icon-circle { width: 52px; height: 52px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 24px; flex: none; }
+.ev-icon-circle.green { background: #dcebc9; }
 .ev-main { flex: 1; min-width: 0; }
 .ev-title { font-size: 18px; font-weight: 700; color: var(--text); line-height: 1.22; }
 .ev-sub { font-size: 15px; color: var(--text-secondary); margin-top: 2px; }
@@ -229,7 +235,8 @@ main {
 .ev-status.violet { color: #6d3fd0; }
 .ev-status.muted { color: var(--text-muted); }
 .ev-media { position: relative; width: 58px; height: 52px; flex: none; }
-.ev-avatar { width: 52px; height: 52px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 700; }
+.ev-avatar { width: 52px; height: 52px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 700; position: relative; overflow: hidden; }
+.ev-avatar img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 .ev-thumb { width: 52px; height: 52px; border-radius: 14px; background: #eef2f6; display: flex; align-items: center; justify-content: center; font-size: 22px; }
 .ev-thumb.mini { position: absolute; right: -6px; bottom: -6px; width: 30px; height: 30px; border-radius: 9px; border: 2px solid #fff; font-size: 14px; }
 .ev-card.done { opacity: 0.55; }

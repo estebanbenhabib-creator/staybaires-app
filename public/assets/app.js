@@ -14,6 +14,11 @@ const TITLES = {
 // sumar uno nuevo en el futuro, agregarlo a esta lista.
 const TIPOS_MANUAL = ["Inspección", "Limpieza extra"];
 
+// Fotos de las colaboradoras (avatar). Se llena cuando haya archivos en
+// public/avatars/. Mientras esté vacío, el avatar muestra la inicial.
+// Ej: { susana: "/avatars/susana.jpg", mari: "/avatars/mari.jpg" }
+const AVATARS = {};
+
 // Catalogo de insumos por categoria (para el selector al marcar un faltante).
 // Agregar/quitar productos es editar esta lista.
 const INSUMOS_CATALOGO = {
@@ -523,6 +528,13 @@ function platformName(p) {
 function avatarColors(id) {
   return { susana: ["#e8e4fb", "#534ab7"], mari: ["#e1f5ee", "#0f6e56"], random: ["#faeeda", "#854f0b"] }[id] || ["#eef2f6", "#5b6472"];
 }
+// Avatar de una persona: foto si hay, si no la inicial sobre un color.
+function avatarHTML(id) {
+  const [abg, afg] = avatarColors(id);
+  const nombre = employeeName(id);
+  const inner = AVATARS[id] ? `<img src="${AVATARS[id]}" alt="" />` : (nombre || "?").charAt(0);
+  return `<div class="ev-avatar" style="background:${abg}; color:${afg};">${inner}</div>`;
+}
 
 // Tarjeta de un evento (checkout, checkin o tarea manual), estilo lista.
 // Compartida por Hoy, la lista del calendario y el detalle mensual. El card
@@ -548,13 +560,16 @@ function eventCardHTML(t, ctx) {
   else if (urgent) [statusCls, statusTxt] = ["red", "Check-out/in · entra hoy"];
   else [statusCls, statusTxt] = ["blue", "Check-out"];
 
-  const [abg, afg] = avatarColors(t.assignedTo);
   const media = isCheckin
-    ? `<div class="ev-media"><div class="ev-thumb">🏠</div></div>`
-    : `<div class="ev-media"><div class="ev-avatar" style="background:${abg}; color:${afg};">${(cleaner || "?").charAt(0)}</div><div class="ev-thumb mini">🏠</div></div>`;
+    ? `<div class="ev-media"><div class="ev-icon-circle green">🔑</div></div>`
+    : `<div class="ev-media">${avatarHTML(t.assignedTo)}<div class="ev-thumb mini">🧼</div></div>`;
+
+  // El fondo de la card diferencia el tipo: verde check-in, azul check-out,
+  // rojo urgente (sale y entra el mismo dia), violeta tarea manual.
+  const tipoCls = isCheckin ? "ev-checkin" : isManual ? "ev-manual" : urgent ? "ev-urgent" : "ev-checkout";
 
   return `
-    <div class="ev-card cal-card${done ? " done" : ""}" data-cal-card="${t.id}" data-cal-type="${isCheckin ? "checkin" : "checkout"}" data-cal-done="${done ? "1" : "0"}">
+    <div class="ev-card cal-card ${tipoCls}${done ? " done" : ""}" data-cal-card="${t.id}" data-cal-type="${isCheckin ? "checkin" : "checkout"}" data-cal-done="${done ? "1" : "0"}">
       <div class="ev-main">
         <div class="ev-title">${titulo}</div>
         <div class="ev-sub">${sub}</div>
@@ -869,12 +884,11 @@ async function renderEmpleadas() {
     const summaryFor = (id) => paymentsData.summary.find((s) => s.employeeId === id);
 
     const personaCard = (e, subtitulo, extra, badge) => {
-      const [abg, afg] = avatarColors(e.id);
       return `
         <div class="card">
           <div class="card-row">
             <div style="display:flex; gap:12px; align-items:center; min-width:0;">
-              <div class="ev-avatar" style="background:${abg}; color:${afg};">${e.nombre.charAt(0)}</div>
+              ${avatarHTML(e.id)}
               <div style="min-width:0;">
                 <p class="card-title">${e.nombre}</p>
                 <p class="card-sub">${subtitulo}</p>
