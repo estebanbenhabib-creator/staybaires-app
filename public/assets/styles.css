@@ -199,7 +199,7 @@ main {
 .chip button { background: none; border: none; color: var(--red-fg); cursor: pointer; font-size: 12px; padding: 0; }
 
 /* Diseño Airbnb (Hoy + Calendario): titular grande, cards tipo lista */
-.ab-greeting { font-size: 14px; font-weight: 600; color: var(--text-muted); margin: 6px 0 2px; }
+.ab-greeting { font-size: 19px; font-weight: 600; color: var(--text-secondary); margin: 8px 0 4px; }
 .ab-headline { font-size: 28px; font-weight: 800; color: var(--text); line-height: 1.14; letter-spacing: -0.4px; margin: 0; }
 .ab-sub { font-size: 13px; color: var(--text-muted); margin: 4px 0 0; }
 .ab-progress { margin: 18px 0 4px; }
