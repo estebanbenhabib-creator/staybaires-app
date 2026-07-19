@@ -3,7 +3,9 @@
 // Esteban) lo marca como faltante; cuando se compra, se saca de la lista.
 //
 // GET    /api/insumos   -> lista de faltantes pendientes
-// POST   /api/insumos   -> marca un faltante  body: { propertyCode, insumo, categoria, notes? }
+// POST   /api/insumos   -> marca faltante(s). Acepta uno solo
+//        { propertyCode, insumo, categoria } o varios de una
+//        { propertyCode, insumos: [{ insumo, categoria }], notes? }
 // DELETE /api/insumos   -> saca un faltante (ya comprado)  body: { id }
 
 const properties = require("../../data/properties.json");
@@ -29,24 +31,28 @@ exports.handler = async (event) => {
     } catch {
       return json(400, { error: "JSON invalido" });
     }
-    if (!body.propertyCode || !body.insumo) {
-      return json(400, { error: "Faltan propertyCode o insumo" });
+    // Acepta uno solo (insumo/categoria) o varios (insumos: [{insumo,categoria}]).
+    const entradas = Array.isArray(body.insumos) ? body.insumos : [{ insumo: body.insumo, categoria: body.categoria }];
+    const validas = entradas.filter((e) => e && e.insumo);
+    if (!body.propertyCode || validas.length === 0) {
+      return json(400, { error: "Faltan propertyCode o insumo(s)" });
     }
     const prop = properties.find((p) => p.codigo === body.propertyCode);
-    const item = {
+    const fecha = new Date().toISOString().slice(0, 10);
+    const nuevos = validas.map((e) => ({
       id: nuevaId(),
       propertyCode: body.propertyCode,
       propertyName: prop ? prop.nombre : body.propertyName || "",
       direccion: prop ? prop.direccion || "" : "",
-      insumo: body.insumo,
-      categoria: body.categoria || "",
+      insumo: e.insumo,
+      categoria: e.categoria || "",
       notes: body.notes || null,
-      fecha: new Date().toISOString().slice(0, 10),
-    };
+      fecha,
+    }));
     const list = await getJSON("insumos-faltantes", []);
-    list.push(item);
+    list.push(...nuevos);
     await setJSON("insumos-faltantes", list);
-    return json(200, { ok: true, item });
+    return json(200, { ok: true, items: nuevos });
   }
 
   if (event.httpMethod === "DELETE") {

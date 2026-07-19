@@ -1296,16 +1296,20 @@ function openFaltanteForm(onDone) {
   const props = CONFIG.properties || [];
   const overlay = document.createElement("div");
   overlay.className = "modal-overlay";
-  const opciones = Object.entries(INSUMOS_CATALOGO)
-    .map(([cat, items]) => `<optgroup label="${cat}">${items.map((i) => `<option value="${i}" data-cat="${cat}">${i}</option>`).join("")}</optgroup>`)
+  const checklist = Object.entries(INSUMOS_CATALOGO)
+    .map(
+      ([cat, items]) => `
+      <div class="chk-cat">${cat}</div>
+      ${items.map((i) => `<label class="chk-item"><input type="checkbox" value="${i}" data-cat="${cat}" /><span>${i}</span></label>`).join("")}`
+    )
     .join("");
   overlay.innerHTML = `
     <div class="modal">
       <h3>Marcar faltante</h3>
       <label>Departamento</label>
       <select id="fl-prop">${props.map((p) => `<option value="${p.codigo}">${p.nombre} — ${p.direccion || p.barrio}</option>`).join("")}</select>
-      <label>Insumo</label>
-      <select id="fl-insumo">${opciones}</select>
+      <label>Insumos que faltan</label>
+      <div class="chk-list">${checklist}</div>
       <label>Nota (opcional)</label>
       <input type="text" id="fl-nota" placeholder="Ej: queda poco" />
       <div class="modal-actions">
@@ -1318,19 +1322,17 @@ function openFaltanteForm(onDone) {
   overlay.onclick = (e) => { if (e.target === overlay) close(); };
   overlay.querySelector("#fl-cancel").onclick = close;
   overlay.querySelector("#fl-save").onclick = async () => {
-    const propSel = overlay.querySelector("#fl-prop");
-    const insSel = overlay.querySelector("#fl-insumo");
-    const opt = insSel.options[insSel.selectedIndex];
+    const checked = [...overlay.querySelectorAll(".chk-list input:checked")];
+    if (checked.length === 0) return toast("Elegí al menos un insumo");
     const body = {
-      propertyCode: propSel.value,
-      insumo: insSel.value,
-      categoria: opt.getAttribute("data-cat") || "",
+      propertyCode: overlay.querySelector("#fl-prop").value,
+      insumos: checked.map((c) => ({ insumo: c.value, categoria: c.getAttribute("data-cat") })),
       notes: overlay.querySelector("#fl-nota").value.trim() || null,
     };
     try {
       await fetchJSON(`${API}/insumos`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       close();
-      toast("Faltante marcado");
+      toast(checked.length === 1 ? "Faltante marcado" : `${checked.length} faltantes marcados`);
       onDone();
     } catch (err) {
       toast("No se pudo marcar: " + err.message);

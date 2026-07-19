@@ -240,6 +240,12 @@ main {
 .ins-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 9px 0; border-top: 1px solid #f0f0f0; font-size: 15px; }
 .ins-cat { font-size: 12px; font-weight: 600; color: var(--text-muted); margin-right: 6px; }
 
+.chk-list { border: 1px solid var(--border); border-radius: 12px; padding: 6px 12px; max-height: 46vh; overflow-y: auto; }
+.chk-cat { font-size: 12px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.3px; margin: 12px 0 4px; }
+.chk-cat:first-child { margin-top: 4px; }
+.chk-item { display: flex; align-items: center; gap: 10px; padding: 9px 0; font-size: 15px; cursor: pointer; }
+.chk-item input { width: 20px; height: 20px; flex: none; }
+
 /* Calendario: toggle Lista/Mes + grilla mensual */
 .cal-bar { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 10px; }
 .cal-toggle { display: inline-flex; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
