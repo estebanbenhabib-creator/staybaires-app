@@ -28,6 +28,22 @@ function isRealReservationCheckout(checkout, platform) {
   return true;
 }
 
+// Booking marca igual las reservas reales y los bloqueos manuales del
+// anfitrion ("CLOSED - Not available"), sin forma de distinguirlos por el
+// texto. Pero un bloqueo suele ser de meses y una reserva real es corta, asi
+// que descartamos como bloqueo cualquier evento de Booking de mas de 90 noches
+// (ninguna reserva por noche dura tanto). Las reservas cortas se respetan.
+const MAX_NOCHES_BOOKING = 90;
+
+function nochesEvento(ev) {
+  if (!ev.start || !ev.end) return 0;
+  return Math.round((new Date(ev.end.date + "T00:00:00") - new Date(ev.start.date + "T00:00:00")) / 86400000);
+}
+
+function esBloqueoLargoBooking(ev, platform) {
+  return platform === "booking" && nochesEvento(ev) > MAX_NOCHES_BOOKING;
+}
+
 /**
  * A partir del texto crudo de los .ics de una propiedad (uno por plataforma),
  * devuelve la lista de fechas de checkout unicas, con la plataforma de origen.
@@ -42,7 +58,8 @@ function checkoutsForProperty(icsTextsByPlatform) {
     } catch (err) {
       continue;
     }
-    const checkouts = checkoutsFromEvents(events).filter((c) => isRealReservationCheckout(c, platform));
+    const usables = events.filter((ev) => !esBloqueoLargoBooking(ev, platform));
+    const checkouts = checkoutsFromEvents(usables).filter((c) => isRealReservationCheckout(c, platform));
     for (const c of checkouts) {
       all.push({ ...c, platform });
     }
@@ -70,7 +87,8 @@ function checkinsForProperty(icsTextsByPlatform) {
     } catch (err) {
       continue;
     }
-    const checkins = checkinsFromEvents(events).filter((c) => isRealReservationCheckout(c, platform));
+    const usables = events.filter((ev) => !esBloqueoLargoBooking(ev, platform));
+    const checkins = checkinsFromEvents(usables).filter((c) => isRealReservationCheckout(c, platform));
     for (const c of checkins) {
       all.push({ ...c, platform });
     }
