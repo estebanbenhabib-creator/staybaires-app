@@ -103,12 +103,21 @@ function pickAssignee(employees) {
  *  - overrides: { [taskId]: { status, assignedTo, assignedName, notes } } (lo que persiste Blobs)
  * Devuelve un array de tareas ordenado por fecha.
  */
+// Devuelve los .ics de una propiedad. Si la propiedad tiene el Booking solo
+// para bloquear fechas (bookingSoloBloqueo), ignoramos ese feed: Booking marca
+// igual las reservas reales y los bloqueos manuales ("CLOSED - Not available"),
+// asi que en esos deptos generaria check-ins/limpiezas fantasma.
+function icsParaPropiedad(prop, icsResultsByCode) {
+  const icsTexts = icsResultsByCode[prop.codigo] || {};
+  return prop.bookingSoloBloqueo ? { ...icsTexts, booking: null } : icsTexts;
+}
+
 function buildTasks(properties, icsResultsByCode, employees, overrides = {}) {
   const tasks = [];
   const defaultAssignee = pickAssignee(employees);
 
   for (const prop of properties) {
-    const icsTexts = icsResultsByCode[prop.codigo] || {};
+    const icsTexts = icsParaPropiedad(prop, icsResultsByCode);
     const checkouts = checkoutsForProperty(icsTexts);
     for (const c of checkouts) {
       const taskId = `${prop.codigo}_${c.date}`;
@@ -145,7 +154,7 @@ function buildTasks(properties, icsResultsByCode, employees, overrides = {}) {
 function buildCheckins(properties, icsResultsByCode, overrides = {}) {
   const checkins = [];
   for (const prop of properties) {
-    const icsTexts = icsResultsByCode[prop.codigo] || {};
+    const icsTexts = icsParaPropiedad(prop, icsResultsByCode);
     const llegadas = checkinsForProperty(icsTexts);
     for (const c of llegadas) {
       const id = `${prop.codigo}_checkin_${c.date}`;
