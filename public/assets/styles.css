@@ -233,6 +233,7 @@ main {
 .ev-status.blue { color: #185fa5; }
 .ev-status.red { color: #a32d2d; }
 .ev-status.violet { color: #6d3fd0; }
+.ev-status.amber { color: #a06a08; }
 .ev-status.muted { color: var(--text-muted); }
 .ev-media { position: relative; width: 58px; height: 52px; flex: none; }
 .ev-avatar { width: 52px; height: 52px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 700; position: relative; overflow: hidden; }
@@ -243,6 +244,7 @@ main {
 .ev-card.done .ev-title { text-decoration: line-through; }
 .ev-reassign { margin-top: 12px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .ev-reassign select { font-size: 15px; font-weight: 600; padding: 10px 14px; border-radius: 12px; min-width: 140px; border: 1px solid var(--border); background: var(--surface); color: var(--text); }
+.ev-reassign select.unset { border-color: #e0a83a; color: #854f0b; background: #fdf6e9; }
 
 .ins-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 9px 0; border-top: 1px solid #f0f0f0; font-size: 15px; }
 .ins-cat { font-size: 12px; font-weight: 600; color: var(--text-muted); margin-right: 6px; }

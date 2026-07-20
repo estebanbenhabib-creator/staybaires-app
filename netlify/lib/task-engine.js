@@ -114,7 +114,6 @@ function icsParaPropiedad(prop, icsResultsByCode) {
 
 function buildTasks(properties, icsResultsByCode, employees, overrides = {}) {
   const tasks = [];
-  const defaultAssignee = pickAssignee(employees);
 
   for (const prop of properties) {
     const icsTexts = icsParaPropiedad(prop, icsResultsByCode);
@@ -123,7 +122,9 @@ function buildTasks(properties, icsResultsByCode, employees, overrides = {}) {
       const taskId = `${prop.codigo}_${c.date}`;
       const already = overrides[taskId];
 
-      const assignedTo = already?.assignedTo || defaultAssignee;
+      // Arranca sin asignar: hay que elegir quien limpio antes de marcarla
+      // hecha, para que el pago no se acredite mal.
+      const assignedTo = already?.assignedTo || null;
 
       tasks.push({
         id: taskId,

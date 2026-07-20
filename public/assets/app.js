@@ -548,15 +548,18 @@ function eventCardHTML(t, ctx) {
   const asignable = !isCheckin;
   const urgent = !isCheckin && !isManual && ctx.urgentIds.has(t.id);
   const done = isCheckin ? t.done === true : t.status === "hecha";
+  const sinAsignar = asignable && !t.assignedTo;
   const titulo = t.direccion || t.propertyName;
-  const cleaner = employeeName(t.assignedTo);
+  const cleaner = t.assignedTo ? employeeName(t.assignedTo) : "Sin asignar";
 
   const sub = isCheckin
     ? `Llega huésped · ${platformName(t.platform)}`
     : `${cleaner}${isManual && t.notes ? ` · ${t.notes}` : ""}`;
 
   let statusCls, statusTxt;
-  if (done) [statusCls, statusTxt] = ["green", "✓ Hecho"];
+  if (done && sinAsignar) [statusCls, statusTxt] = ["amber", "✓ Hecho · elegí quién limpió ↓"];
+  else if (done) [statusCls, statusTxt] = ["green", "✓ Hecho"];
+  else if (sinAsignar) [statusCls, statusTxt] = ["amber", "Elegí quién limpió ↓"];
   else if (isManual) [statusCls, statusTxt] = ["violet", t.tipo];
   else if (isCheckin) [statusCls, statusTxt] = ["green", "Check-in"];
   else if (urgent) [statusCls, statusTxt] = ["red", "Check-out/in · entra hoy"];
@@ -571,7 +574,7 @@ function eventCardHTML(t, ctx) {
   const tipoCls = isCheckin ? "ev-checkin" : isManual ? "ev-manual" : urgent ? "ev-urgent" : "ev-checkout";
 
   return `
-    <div class="ev-card cal-card ${tipoCls}${done ? " done" : ""}" data-cal-card="${t.id}" data-cal-type="${isCheckin ? "checkin" : "checkout"}" data-cal-done="${done ? "1" : "0"}">
+    <div class="ev-card cal-card ${tipoCls}${done ? " done" : ""}" data-cal-card="${t.id}" data-cal-type="${isCheckin ? "checkin" : "checkout"}" data-cal-done="${done ? "1" : "0"}" data-cal-assigned="${t.assignedTo || ""}">
       <div class="ev-main">
         <div class="ev-title">${titulo}</div>
         <div class="ev-sub">${sub}</div>
@@ -579,7 +582,8 @@ function eventCardHTML(t, ctx) {
         ${
           asignable && ctx.puedeAsignar
             ? `<div class="ev-reassign">
-                <select class="badge-select" data-reassign-cal="${t.id}">
+                <select class="badge-select ${sinAsignar ? "unset" : ""}" data-reassign-cal="${t.id}">
+                  <option value="" ${sinAsignar ? "selected" : ""} disabled>Elegí quién limpió…</option>
                   ${ctx.cleaners.map((c) => `<option value="${c.id}" ${c.id === t.assignedTo ? "selected" : ""}>${c.nombre}</option>`).join("")}
                 </select>
                 ${isManual && ctx.esAdmin ? `<button class="link-danger" data-del-manual="${t.id}">Eliminar</button>` : ""}
@@ -812,6 +816,12 @@ function attachCardHandlers(rerender) {
       const id = card.getAttribute("data-cal-card");
       const esCheckout = card.getAttribute("data-cal-type") === "checkout";
       const done = card.getAttribute("data-cal-done") === "1";
+      // No dejar marcar hecha una limpieza sin asignar: primero hay que elegir
+      // quién limpió, si no el pago no se le acredita a nadie.
+      if (esCheckout && !done && !card.getAttribute("data-cal-assigned")) {
+        toast("Elegí quién limpió antes de marcarla hecha");
+        return;
+      }
       const body = esCheckout ? { id, status: done ? "pendiente" : "hecha" } : { id, done: !done };
       try {
         await fetchJSON(`${API}/tasks`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
@@ -857,7 +867,7 @@ async function renderTareas() {
 
     setMain(`
       <h1 class="ab-headline">Tareas</h1>
-      <div class="ab-sub">${headline}${manage ? " · asignación por defecto a Susana" : ""}</div>
+      <div class="ab-sub">${headline}${manage ? " · elegí quién limpia cada una" : ""}</div>
       ${SESSION.role === "admin" ? `<div style="margin:14px 0 4px;"><button class="btn-primary" data-nueva-tarea>+ Nueva tarea</button></div>` : ""}
       ${tasks.length === 0 ? `<div class="empty-state" style="margin-top:16px;">No hay tareas pendientes.</div>` : lista}
     `);
