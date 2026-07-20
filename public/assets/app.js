@@ -554,7 +554,7 @@ function eventCardHTML(t, ctx) {
 
   const sub = isCheckin
     ? `Llega huésped · ${platformName(t.platform)}`
-    : `${cleaner}${isManual && t.notes ? ` · ${t.notes}` : ""}`;
+    : `${cleaner}${isManual && t.notes ? ` · ${t.notes}` : ""}${t.fechaOriginal ? ` · movida del ${fmtDate(t.fechaOriginal)}` : ""}`;
 
   let statusCls, statusTxt;
   if (done && sinAsignar) [statusCls, statusTxt] = ["amber", "✓ Hecho · elegí quién limpió ↓"];
@@ -586,6 +586,7 @@ function eventCardHTML(t, ctx) {
                   <option value="" ${sinAsignar ? "selected" : ""} disabled>Elegí quién limpió…</option>
                   ${ctx.cleaners.map((c) => `<option value="${c.id}" ${c.id === t.assignedTo ? "selected" : ""}>${c.nombre}</option>`).join("")}
                 </select>
+                ${!isManual ? `<button class="link-edit" data-cambiar-fecha="${t.id}" data-fecha="${t.date}">Cambiar día</button>` : ""}
                 ${isManual && ctx.esAdmin ? `<button class="link-danger" data-del-manual="${t.id}">Eliminar</button>` : ""}
               </div>`
             : ""
@@ -808,11 +809,19 @@ function attachCardHandlers(rerender) {
     };
   });
 
+  // Cambiar la fecha de una limpieza.
+  document.querySelectorAll("[data-cambiar-fecha]").forEach((btn) => {
+    btn.onclick = (e) => {
+      e.stopPropagation();
+      openCambiarFechaForm(btn.getAttribute("data-cambiar-fecha"), btn.getAttribute("data-fecha"), rerender);
+    };
+  });
+
   // Tocar el card marca (o desmarca) que ese check ya se hizo. No dispara
-  // cuando el toque fue sobre el selector de reasignacion ni el boton borrar.
+  // cuando el toque fue sobre el selector de reasignacion ni los botones.
   document.querySelectorAll("[data-cal-card]").forEach((card) => {
     card.addEventListener("click", async (e) => {
-      if (e.target.closest("select") || e.target.closest("[data-del-manual]")) return;
+      if (e.target.closest("select") || e.target.closest("[data-del-manual]") || e.target.closest("[data-cambiar-fecha]")) return;
       const id = card.getAttribute("data-cal-card");
       const esCheckout = card.getAttribute("data-cal-type") === "checkout";
       const done = card.getAttribute("data-cal-done") === "1";
@@ -994,6 +1003,40 @@ function buildWaMessage(s, from, to) {
   L.push("");
   L.push(`*TOTAL: ${fmtMoney(s.total)}*`);
   return L.join("\n");
+}
+
+// Cambiar la fecha de una limpieza (ej: el huesped extendio por afuera de la
+// plataforma, la limpieza va otro dia distinto al del iCal).
+function openCambiarFechaForm(id, fechaActual, onDone) {
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+  overlay.innerHTML = `
+    <div class="modal">
+      <h3>Cambiar día de la limpieza</h3>
+      <label>Nueva fecha</label>
+      <input type="date" id="cf-fecha" value="${fechaActual}" />
+      <div class="modal-actions">
+        <button class="btn-secondary" id="cf-cancel">Cancelar</button>
+        <button class="btn-primary" id="cf-save">Guardar</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  const close = () => overlay.remove();
+  overlay.onclick = (e) => { if (e.target === overlay) close(); };
+  overlay.querySelector("#cf-cancel").onclick = close;
+  overlay.querySelector("#cf-save").onclick = async () => {
+    const fecha = overlay.querySelector("#cf-fecha").value;
+    if (!fecha) return toast("Elegí una fecha");
+    try {
+      await fetchJSON(`${API}/tasks`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, fecha }) });
+      CACHE.tasksPayload = null;
+      close();
+      toast("Limpieza movida al " + fmtDate(fecha));
+      onDone();
+    } catch (err) {
+      toast("No se pudo cambiar: " + err.message);
+    }
+  };
 }
 
 // Editar el precio de una tarea manual desde la liquidacion.

@@ -51,12 +51,23 @@ exports.handler = async (event) => {
       ...(body.assignedName !== undefined ? { assignedName: body.assignedName } : {}),
       ...(body.notes !== undefined ? { notes: body.notes } : {}),
       ...(body.done !== undefined ? { done: body.done } : {}),
+      ...(body.fecha ? { fecha: body.fecha } : {}),
     };
     await setJSON("task-overrides", overrides);
 
+    const ov = overrides[body.id];
+    const patch = (t) => {
+      const m = { ...t, ...ov };
+      // Si se cambio la fecha a mano, mover la tarea a esa fecha (y recordar la original).
+      if (ov.fecha) {
+        m.fechaOriginal = t.fechaOriginal || t.date;
+        m.date = ov.fecha;
+      }
+      return m;
+    };
     const payload = await getJSON("tasks-cache", { tasks: [], checkins: [], lastSync: null, syncErrors: [] });
-    payload.tasks = payload.tasks.map((t) => (t.id === body.id ? { ...t, ...overrides[body.id] } : t));
-    payload.checkins = (payload.checkins || []).map((c) => (c.id === body.id ? { ...c, ...overrides[body.id] } : c));
+    payload.tasks = payload.tasks.map((t) => (t.id === body.id ? patch(t) : t)).sort((a, b) => a.date.localeCompare(b.date));
+    payload.checkins = (payload.checkins || []).map((c) => (c.id === body.id ? { ...c, ...ov } : c));
     await setJSON("tasks-cache", payload);
 
     const updated = payload.tasks.find((t) => t.id === body.id) || payload.checkins.find((c) => c.id === body.id);

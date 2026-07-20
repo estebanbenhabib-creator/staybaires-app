@@ -144,13 +144,18 @@ function buildTasks(properties, icsResultsByCode, employees, overrides = {}) {
       // hecha, para que el pago no se acredite mal.
       const assignedTo = already?.assignedTo || null;
 
+      // Si se cambio la fecha a mano (ej. el huesped extendio por afuera de la
+      // plataforma), la limpieza va en la fecha real; guardamos la del iCal.
+      const fechaReal = already?.fecha || c.date;
+
       tasks.push({
         id: taskId,
         propertyCode: prop.codigo,
         propertyName: prop.nombre,
         barrio: prop.barrio,
         direccion: prop.direccion || "",
-        date: c.date,
+        date: fechaReal,
+        fechaOriginal: fechaReal !== c.date ? c.date : null,
         platform: c.platform,
         type: "checkout",
         status: already?.status || "pendiente",
