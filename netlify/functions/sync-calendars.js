@@ -27,7 +27,10 @@ async function runSync() {
   const manualTasks = manual.map((m) => ({ ...m, ...(overrides[m.id] || {}) }));
 
   const tasks = [...icalTasks, ...manualTasks].sort((a, b) => a.date.localeCompare(b.date));
-  const checkins = buildCheckins(properties, icsByCode, overrides);
+  // "Hoy" en horario de Argentina (UTC-3) para filtrar los check-in corridos de
+  // Booking (ver buildCheckins). El server corre en UTC.
+  const hoyAR = new Date(Date.now() - 3 * 3600 * 1000).toISOString().slice(0, 10);
+  const checkins = buildCheckins(properties, icsByCode, overrides, hoyAR);
 
   const payload = {
     tasks,

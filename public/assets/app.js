@@ -1013,6 +1013,10 @@ function openCambiarFechaForm(id, fechaActual, onDone) {
   overlay.innerHTML = `
     <div class="modal">
       <h3>Cambiar día de la limpieza</h3>
+      <label>Extendió (desde el día original)</label>
+      <div class="cf-quick">
+        ${[1, 2, 3, 5, 7, 10].map((n) => `<button data-add="${n}">+${n} día${n > 1 ? "s" : ""}</button>`).join("")}
+      </div>
       <label>Nueva fecha</label>
       <input type="date" id="cf-fecha" value="${fechaActual}" />
       <div class="modal-actions">
@@ -1023,6 +1027,14 @@ function openCambiarFechaForm(id, fechaActual, onDone) {
   document.body.appendChild(overlay);
   const close = () => overlay.remove();
   overlay.onclick = (e) => { if (e.target === overlay) close(); };
+  overlay.querySelectorAll(".cf-quick button").forEach((b) => {
+    b.onclick = () => {
+      const nueva = isoPlusDays(fechaActual, Number(b.getAttribute("data-add")));
+      overlay.querySelector("#cf-fecha").value = nueva;
+      overlay.querySelectorAll(".cf-quick button").forEach((x) => x.classList.remove("on"));
+      b.classList.add("on");
+    };
+  });
   overlay.querySelector("#cf-cancel").onclick = close;
   overlay.querySelector("#cf-save").onclick = async () => {
     const fecha = overlay.querySelector("#cf-fecha").value;

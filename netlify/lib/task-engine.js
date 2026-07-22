@@ -175,12 +175,19 @@ function buildTasks(properties, icsResultsByCode, employees, overrides = {}) {
  * "done" (via overrides) para poder marcar en el calendario que la llegada
  * ya se gestiono.
  */
-function buildCheckins(properties, icsResultsByCode, overrides = {}) {
+function buildCheckins(properties, icsResultsByCode, overrides = {}, hoy = null) {
   const checkins = [];
   for (const prop of properties) {
     const icsTexts = icsParaPropiedad(prop, icsResultsByCode);
     const llegadas = checkinsForProperty(icsTexts);
     for (const c of llegadas) {
+      // Booking.com corre el DTSTART de una reserva EN CURSO al "dia de hoy"
+      // cada vez que se regenera el feed (asi que un huesped que entro el 20 y
+      // sigue adentro aparece como si "llegara" hoy, manana, etc). Ese falso
+      // check-in siempre cae en hoy o en el pasado -> lo descartamos. Las
+      // llegadas reales que importan son las FUTURAS. El check-out (DTEND) es
+      // confiable y no se toca. Airbnb/Vrbo no tienen este problema.
+      if (hoy && c.platform === "booking" && c.date <= hoy) continue;
       const id = `${prop.codigo}_checkin_${c.date}`;
       checkins.push({
         id,
