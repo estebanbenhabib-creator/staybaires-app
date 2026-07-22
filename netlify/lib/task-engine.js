@@ -169,40 +169,115 @@ function buildTasks(properties, icsResultsByCode, employees, overrides = {}) {
   return tasks.sort((a, b) => a.date.localeCompare(b.date));
 }
 
+// Devuelve las reservas de Booking (rango start/end) de una propiedad, ya
+// filtrados los bloqueos largos (>90n). Se usan para reconocer una estadia por
+// solapamiento de fechas y no confiar en el DTSTART (ver buildCheckins).
+function reservasBooking(icsTextsByPlatform) {
+  const text = icsTextsByPlatform.booking;
+  if (!text) return [];
+  let events;
+  try {
+    events = parseICS(text);
+  } catch (err) {
+    return [];
+  }
+  return events
+    .filter((ev) => ev.start && ev.end && !esBloqueoLargoBooking(ev, "booking"))
+    .map((ev) => ({ start: ev.start.date, end: ev.end.date }))
+    .sort((a, b) => a.start.localeCompare(b.start));
+}
+
+// Dos estadias [start,end) se solapan si comparten al menos un dia. Back-to-back
+// (checkout de una == checkin de la otra) NO se solapan.
+function seSolapan(aStart, aEnd, bStart, bEnd) {
+  return aStart < bEnd && bStart < aEnd;
+}
+
+function mkCheckin(prop, date, platform, overrides) {
+  const id = `${prop.codigo}_checkin_${date}`;
+  return {
+    id,
+    propertyCode: prop.codigo,
+    propertyName: prop.nombre,
+    barrio: prop.barrio,
+    direccion: prop.direccion || "",
+    date,
+    platform,
+    type: "checkin",
+    done: overrides[id]?.done || false,
+  };
+}
+
 /**
  * Construye la lista de check-ins (llegadas de huespedes) para todas las
- * propiedades. No genera tareas ni tiene asignacion, pero si guarda un flag
- * "done" (via overrides) para poder marcar en el calendario que la llegada
- * ya se gestiono.
+ * propiedades. No genera tareas ni asignacion; guarda un flag "done" (via
+ * overrides) para marcar en el calendario que la llegada ya se gestiono.
+ *
+ * Problema con Booking: cada vez que regenera el feed, corre el DTSTART de una
+ * reserva EN CURSO al "dia de hoy" (un huesped que entro el 20 y sigue adentro
+ * aparece como si "llegara" hoy, manana, etc) y ademas cambia el UID. En el
+ * feed de UN dia una llegada real de hoy y una reserva en curso corrida a hoy
+ * son identicas, asi que no se pueden distinguir sin memoria.
+ *
+ * Solucion: guardamos cada estadia de Booking la primera vez que la vemos, con
+ * su fecha de llegada REAL. En syncs siguientes la reconocemos por solapamiento
+ * de fechas (no por UID, que cambia) aunque Booking corra el inicio o la
+ * extienda, y usamos la llegada original. Emitimos un check-in de Booking solo
+ * si su llegada real es futura, o es hoy y ya la conociamos de antes (una
+ * llegada agendada que ya vimos como futura). Airbnb/Vrbo no tienen este
+ * problema y su fecha de llegada se toma tal cual.
+ *
+ * Devuelve { checkins, estadias } donde "estadias" es el mapa a persistir para
+ * el proximo sync: { [codigo]: [{ checkin, checkout }] }.
  */
-function buildCheckins(properties, icsResultsByCode, overrides = {}, hoy = null) {
+function buildCheckins(properties, icsResultsByCode, overrides = {}, hoy = null, estadiasPrev = {}) {
   const checkins = [];
+  const estadias = {};
+
   for (const prop of properties) {
     const icsTexts = icsParaPropiedad(prop, icsResultsByCode);
-    const llegadas = checkinsForProperty(icsTexts);
-    for (const c of llegadas) {
-      // Booking.com corre el DTSTART de una reserva EN CURSO al "dia de hoy"
-      // cada vez que se regenera el feed (asi que un huesped que entro el 20 y
-      // sigue adentro aparece como si "llegara" hoy, manana, etc). Ese falso
-      // check-in siempre cae en hoy o en el pasado -> lo descartamos. Las
-      // llegadas reales que importan son las FUTURAS. El check-out (DTEND) es
-      // confiable y no se toca. Airbnb/Vrbo no tienen este problema.
-      if (hoy && c.platform === "booking" && c.date <= hoy) continue;
-      const id = `${prop.codigo}_checkin_${c.date}`;
-      checkins.push({
-        id,
-        propertyCode: prop.codigo,
-        propertyName: prop.nombre,
-        barrio: prop.barrio,
-        direccion: prop.direccion || "",
-        date: c.date,
-        platform: c.platform,
-        type: "checkin",
-        done: overrides[id]?.done || false,
-      });
+
+    // Airbnb / Vrbo: la fecha de llegada del feed es confiable.
+    const llegadasNoBooking = checkinsForProperty({ ...icsTexts, booking: null });
+    for (const c of llegadasNoBooking) {
+      checkins.push(mkCheckin(prop, c.date, c.platform, overrides));
     }
+
+    // Booking: reconocer la estadia por solapamiento contra lo ya visto.
+    const prev = (estadiasPrev[prop.codigo] || []).map((e) => ({ ...e }));
+    const vigentes = [];
+    for (const r of reservasBooking(icsTexts)) {
+      const match = prev.find((e) => !e._usada && seSolapan(e.checkin, e.checkout, r.start, r.end));
+      const conocida = !!match;
+      let checkinReal = r.start;
+      let checkout = r.end;
+      if (match) {
+        match._usada = true;
+        // La llegada real es la mas temprana vista; el checkout, el mas tardio
+        // (por si el huesped extendio).
+        if (match.checkin < checkinReal) checkinReal = match.checkin;
+        if (match.checkout > checkout) checkout = match.checkout;
+      }
+      // Recordar la estadia mientras siga vigente (checkout futuro).
+      if (!hoy || checkout > hoy) vigentes.push({ checkin: checkinReal, checkout });
+      // Emitir el check-in solo si es una llegada futura, o es hoy y ya la
+      // conociamos (agendada). Una estadia nueva que arranca hoy/ayer sin
+      // historial se asume reserva en curso (DTSTART corrido) y no se emite.
+      const emitir = !hoy || checkinReal > hoy || (checkinReal === hoy && conocida);
+      if (emitir) checkins.push(mkCheckin(prop, checkinReal, "booking", overrides));
+    }
+    if (vigentes.length) estadias[prop.codigo] = vigentes;
   }
-  return checkins.sort((a, b) => a.date.localeCompare(b.date));
+
+  // Dedup por id (misma propiedad + misma fecha, si dos plataformas coincidieran).
+  const seen = new Set();
+  const unicos = [];
+  for (const c of checkins.sort((a, b) => a.date.localeCompare(b.date))) {
+    if (seen.has(c.id)) continue;
+    seen.add(c.id);
+    unicos.push(c);
+  }
+  return { checkins: unicos, estadias };
 }
 
 module.exports = { checkoutsForProperty, checkinsForProperty, pickAssignee, buildTasks, buildCheckins, isRealReservationCheckout };

@@ -27,10 +27,14 @@ async function runSync() {
   const manualTasks = manual.map((m) => ({ ...m, ...(overrides[m.id] || {}) }));
 
   const tasks = [...icalTasks, ...manualTasks].sort((a, b) => a.date.localeCompare(b.date));
-  // "Hoy" en horario de Argentina (UTC-3) para filtrar los check-in corridos de
-  // Booking (ver buildCheckins). El server corre en UTC.
+  // "Hoy" en horario de Argentina (UTC-3); el server corre en UTC. Se usa para
+  // reconocer los check-in corridos de Booking (ver buildCheckins).
   const hoyAR = new Date(Date.now() - 3 * 3600 * 1000).toISOString().slice(0, 10);
-  const checkins = buildCheckins(properties, icsByCode, overrides, hoyAR);
+  // Memoria de estadias de Booking: guardamos cada reserva con su llegada real
+  // para no confiar en el DTSTART, que Booking corre al dia de hoy.
+  const estadiasPrev = await getJSON("booking-estadias", {});
+  const { checkins, estadias } = buildCheckins(properties, icsByCode, overrides, hoyAR, estadiasPrev);
+  await setJSON("booking-estadias", estadias);
 
   const payload = {
     tasks,
