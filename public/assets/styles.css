@@ -180,6 +180,9 @@ main {
 .modal label { display: block; font-size: 12px; font-weight: 600; color: var(--text-secondary); margin: 12px 0 4px; }
 .modal input, .modal select { width: 100%; box-sizing: border-box; border: 1px solid var(--border); border-radius: var(--radius); padding: 9px 10px; font-size: 14px; background: var(--surface); }
 .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 18px; }
+.cf-quick { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 4px; }
+.cf-quick button { border: 1px solid var(--border); background: var(--surface); border-radius: 999px; padding: 6px 12px; font-size: 13px; font-weight: 600; color: var(--navy); cursor: pointer; }
+.cf-quick button.on { background: var(--navy); color: #fff; border-color: var(--navy); }
 
 /* Pagos / liquidacion */
 .pay-dates { display: flex; gap: 8px; margin-bottom: 8px; }
