@@ -485,13 +485,19 @@ function openNuevaTareaForm(onCreated) {
       <label>Fecha</label>
       <input type="date" id="nt-date" value="${hoy}" />
       <label>Propiedad</label>
-      <select id="nt-prop">${props.map((p) => `<option value="${p.codigo}">${p.nombre} — ${p.direccion || p.barrio}</option>`).join("")}</select>
+      <select id="nt-prop">
+        <option value="">Sin departamento (general)</option>
+        ${props.map((p) => `<option value="${p.codigo}">${p.nombre} — ${p.direccion || p.barrio}</option>`).join("")}
+      </select>
       <label>Asignar a</label>
-      <select id="nt-asig">${cleaners.map((c) => `<option value="${c.id}">${c.nombre}</option>`).join("")}</select>
+      <select id="nt-asig">
+        <option value="">Sin asignar</option>
+        ${cleaners.map((c) => `<option value="${c.id}">${c.nombre}</option>`).join("")}
+      </select>
       <label>Valor / pago</label>
       <input type="number" id="nt-valor" inputmode="numeric" placeholder="0" />
       <label>Nota (opcional)</label>
-      <input type="text" id="nt-nota" placeholder="Ej: revisar aire acondicionado" />
+      <input type="text" id="nt-nota" placeholder="Ej: comprar sábanas / revisar aire" />
       <div class="modal-actions">
         <button class="btn-secondary" id="nt-cancel">Cancelar</button>
         <button class="btn-primary" id="nt-save">Crear</button>
@@ -505,12 +511,15 @@ function openNuevaTareaForm(onCreated) {
     const body = {
       tipo: overlay.querySelector("#nt-tipo").value,
       date: overlay.querySelector("#nt-date").value,
-      propertyCode: overlay.querySelector("#nt-prop").value,
-      assignedTo: overlay.querySelector("#nt-asig").value,
+      propertyCode: overlay.querySelector("#nt-prop").value || null,
+      assignedTo: overlay.querySelector("#nt-asig").value || null,
       valor: Number(overlay.querySelector("#nt-valor").value) || 0,
       notes: overlay.querySelector("#nt-nota").value.trim() || null,
     };
     if (!body.date) return toast("Elegí una fecha");
+    // Una tarea general (sin depto) se identifica por la nota, asi que es
+    // obligatoria en ese caso.
+    if (!body.propertyCode && !body.notes) return toast("Escribí una nota: es el texto que se ve en el feed");
     try {
       await fetchJSON(`${API}/manual-tasks`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       CACHE.tasksPayload = null;
@@ -545,15 +554,23 @@ function avatarHTML(id) {
 function eventCardHTML(t, ctx) {
   const isCheckin = t.type === "checkin";
   const isManual = t.source === "manual";
+  // Tarea general = manual sin departamento; se identifica por la nota.
+  const esGeneral = isManual && !t.propertyCode && !t.direccion && !t.propertyName;
   const asignable = !isCheckin;
   const urgent = !isCheckin && !isManual && ctx.urgentIds.has(t.id);
   const done = isCheckin ? t.done === true : t.status === "hecha";
-  const sinAsignar = asignable && !t.assignedTo;
-  const titulo = t.direccion || t.propertyName;
+  // El amber "elegí quién limpió" solo aplica a limpiezas de depto, no a las
+  // tareas manuales (que pueden ir sin asignar a proposito).
+  const sinAsignar = asignable && !isManual && !t.assignedTo;
+  const titulo = esGeneral ? t.notes || t.tipo || "Tarea" : t.direccion || t.propertyName;
   const cleaner = t.assignedTo ? employeeName(t.assignedTo) : "Sin asignar";
 
   const sub = isCheckin
     ? `Llega huésped · ${platformName(t.platform)}`
+    : esGeneral
+    ? t.assignedTo
+      ? cleaner
+      : "Tarea general"
     : `${cleaner}${isManual && t.notes ? ` · ${t.notes}` : ""}${t.fechaOriginal ? ` · movida del ${fmtDate(t.fechaOriginal)}` : ""}`;
 
   let statusCls, statusTxt;
@@ -567,6 +584,8 @@ function eventCardHTML(t, ctx) {
 
   const media = isCheckin
     ? `<div class="ev-media"><div class="ev-icon-circle green">🔑</div></div>`
+    : isManual
+    ? `<div class="ev-media">${t.assignedTo ? avatarHTML(t.assignedTo) : ""}<div class="ev-thumb mini">📌</div></div>`
     : `<div class="ev-media">${avatarHTML(t.assignedTo)}<div class="ev-thumb mini">🧼</div></div>`;
 
   // El fondo de la card diferencia el tipo: verde check-in, azul check-out,
@@ -574,7 +593,7 @@ function eventCardHTML(t, ctx) {
   const tipoCls = isCheckin ? "ev-checkin" : isManual ? "ev-manual" : urgent ? "ev-urgent" : "ev-checkout";
 
   return `
-    <div class="ev-card cal-card ${tipoCls}${done ? " done" : ""}" data-cal-card="${t.id}" data-cal-type="${isCheckin ? "checkin" : "checkout"}" data-cal-done="${done ? "1" : "0"}" data-cal-assigned="${t.assignedTo || ""}">
+    <div class="ev-card cal-card ${tipoCls}${done ? " done" : ""}" data-cal-card="${t.id}" data-cal-type="${isCheckin ? "checkin" : "checkout"}" data-cal-manual="${isManual ? "1" : "0"}" data-cal-done="${done ? "1" : "0"}" data-cal-assigned="${t.assignedTo || ""}">
       <div class="ev-main">
         <div class="ev-title">${titulo}</div>
         <div class="ev-sub">${sub}</div>
@@ -582,8 +601,8 @@ function eventCardHTML(t, ctx) {
         ${
           asignable && ctx.puedeAsignar
             ? `<div class="ev-reassign">
-                <select class="badge-select ${sinAsignar ? "unset" : ""}" data-reassign-cal="${t.id}">
-                  <option value="" ${sinAsignar ? "selected" : ""} disabled>Elegí quién limpió…</option>
+                <select class="badge-select ${!t.assignedTo ? "unset" : ""}" data-reassign-cal="${t.id}">
+                  <option value="" ${!t.assignedTo ? "selected" : ""} ${isManual ? "" : "disabled"}>${isManual ? "Asignar a… (opcional)" : "Elegí quién limpió…"}</option>
                   ${ctx.cleaners.map((c) => `<option value="${c.id}" ${c.id === t.assignedTo ? "selected" : ""}>${c.nombre}</option>`).join("")}
                 </select>
                 ${!isManual ? `<button class="link-edit" data-cambiar-fecha="${t.id}" data-fecha="${t.date}">Cambiar día</button>` : ""}
@@ -824,10 +843,12 @@ function attachCardHandlers(rerender) {
       if (e.target.closest("select") || e.target.closest("[data-del-manual]") || e.target.closest("[data-cambiar-fecha]")) return;
       const id = card.getAttribute("data-cal-card");
       const esCheckout = card.getAttribute("data-cal-type") === "checkout";
+      const esManual = card.getAttribute("data-cal-manual") === "1";
       const done = card.getAttribute("data-cal-done") === "1";
       // No dejar marcar hecha una limpieza sin asignar: primero hay que elegir
-      // quién limpió, si no el pago no se le acredita a nadie.
-      if (esCheckout && !done && !card.getAttribute("data-cal-assigned")) {
+      // quién limpió, si no el pago no se le acredita a nadie. Las tareas
+      // manuales no tienen esa restriccion (pueden ir sin asignar a proposito).
+      if (esCheckout && !esManual && !done && !card.getAttribute("data-cal-assigned")) {
         toast("Elegí quién limpió antes de marcarla hecha");
         return;
       }

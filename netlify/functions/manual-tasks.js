@@ -32,10 +32,10 @@ exports.handler = async (event) => {
     } catch {
       return json(400, { error: "JSON invalido" });
     }
-    if (!body.date || !body.tipo || !body.assignedTo) {
-      return json(400, { error: "Faltan date, tipo o assignedTo" });
+    if (!body.date || !body.tipo) {
+      return json(400, { error: "Faltan date o tipo" });
     }
-    const prop = properties.find((p) => p.codigo === body.propertyCode);
+    const prop = body.propertyCode ? properties.find((p) => p.codigo === body.propertyCode) : null;
     const task = {
       id: nuevaId(),
       source: "manual",
@@ -46,7 +46,7 @@ exports.handler = async (event) => {
       propertyName: prop ? prop.nombre : body.propertyName || "",
       direccion: prop ? prop.direccion || "" : body.direccion || "",
       barrio: prop ? prop.barrio || "" : "",
-      assignedTo: body.assignedTo,
+      assignedTo: body.assignedTo || null,
       valor: Number(body.valor) || 0,
       notes: body.notes || null,
       status: "pendiente",
