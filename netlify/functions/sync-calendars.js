@@ -5,7 +5,7 @@
 const properties = require("../../data/properties.json");
 const employees = require("../../data/employees.json");
 const { fetchAllCalendars } = require("../lib/fetch-calendars");
-const { buildTasks, buildCheckins } = require("../lib/task-engine");
+const { buildTasks, buildCheckins, consolidarBooking } = require("../lib/task-engine");
 const { getJSON, setJSON } = require("../lib/store");
 
 async function runSync() {
@@ -19,7 +19,18 @@ async function runSync() {
   }
 
   const overrides = await getJSON("task-overrides", {});
-  const icalTasks = buildTasks(properties, icsByCode, employees, overrides);
+
+  // "Hoy" en horario de Argentina (UTC-3); el server corre en UTC.
+  const hoyAR = new Date(Date.now() - 3 * 3600 * 1000).toISOString().slice(0, 10);
+  // Memoria de estadias de Booking: reconocemos cada reserva por solapamiento y
+  // guardamos su llegada/salida REAL, porque Booking corre el DTSTART de las
+  // reservas en curso y ademas saca la reserva del feed el dia del checkout.
+  // De aca salen tanto los check-in como los check-out (limpiezas) de Booking.
+  const estadiasPrev = await getJSON("booking-estadias", {});
+  const { reservas: reservasBk, estadias } = consolidarBooking(properties, icsByCode, estadiasPrev, hoyAR);
+  await setJSON("booking-estadias", estadias);
+
+  const icalTasks = buildTasks(properties, icsByCode, employees, overrides, reservasBk);
 
   // Tareas manuales (inspecciones, limpiezas extra): no vienen de iCal, se
   // guardan aparte y se fusionan aca aplicandoles los mismos overrides.
@@ -27,14 +38,7 @@ async function runSync() {
   const manualTasks = manual.map((m) => ({ ...m, ...(overrides[m.id] || {}) }));
 
   const tasks = [...icalTasks, ...manualTasks].sort((a, b) => a.date.localeCompare(b.date));
-  // "Hoy" en horario de Argentina (UTC-3); el server corre en UTC. Se usa para
-  // reconocer los check-in corridos de Booking (ver buildCheckins).
-  const hoyAR = new Date(Date.now() - 3 * 3600 * 1000).toISOString().slice(0, 10);
-  // Memoria de estadias de Booking: guardamos cada reserva con su llegada real
-  // para no confiar en el DTSTART, que Booking corre al dia de hoy.
-  const estadiasPrev = await getJSON("booking-estadias", {});
-  const { checkins, estadias } = buildCheckins(properties, icsByCode, overrides, hoyAR, estadiasPrev);
-  await setJSON("booking-estadias", estadias);
+  const checkins = buildCheckins(properties, icsByCode, overrides, hoyAR, reservasBk);
 
   const payload = {
     tasks,

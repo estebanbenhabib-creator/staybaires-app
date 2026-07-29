@@ -130,12 +130,25 @@ function icsParaPropiedad(prop, icsResultsByCode) {
   return prop.bookingSoloBloqueo ? { ...icsTexts, booking: null } : icsTexts;
 }
 
-function buildTasks(properties, icsResultsByCode, employees, overrides = {}) {
+function buildTasks(properties, icsResultsByCode, employees, overrides = {}, reservasBookingPorCod = null) {
   const tasks = [];
 
   for (const prop of properties) {
     const icsTexts = icsParaPropiedad(prop, icsResultsByCode);
-    const checkouts = checkoutsForProperty(icsTexts);
+    // Checkouts de Airbnb/Vrbo desde el feed (fechas confiables).
+    const checkoutsFeed = checkoutsForProperty({ ...icsTexts, booking: null });
+    // Checkouts de Booking desde la memoria consolidada: el feed de Booking
+    // SACA la reserva el dia del checkout, asi que si generaramos la limpieza
+    // desde el feed la perderiamos justo ese dia (ver consolidarBooking). Si no
+    // hay memoria (tests/compat), caemos al feed de Booking directo.
+    const checkoutsBooking = reservasBookingPorCod
+      ? (reservasBookingPorCod[prop.codigo] || []).map((r) => ({ date: r.checkout, platform: "booking" }))
+      : checkoutsForProperty({ airbnb: null, vrbo: null, booking: icsTexts.booking });
+    const byDate = new Map();
+    for (const c of [...checkoutsFeed, ...checkoutsBooking]) {
+      if (!byDate.has(c.date)) byDate.set(c.date, c);
+    }
+    const checkouts = Array.from(byDate.values()).sort((a, b) => a.date.localeCompare(b.date));
     for (const c of checkouts) {
       const taskId = `${prop.codigo}_${c.date}`;
       const already = overrides[taskId];
@@ -193,6 +206,79 @@ function seSolapan(aStart, aEnd, bStart, bEnd) {
   return aStart < bEnd && bStart < aEnd;
 }
 
+function isoMenosDias(iso, dias) {
+  const d = new Date(iso + "T00:00:00");
+  d.setDate(d.getDate() - dias);
+  return d.toISOString().slice(0, 10);
+}
+function isoMasDias(iso, dias) {
+  return isoMenosDias(iso, -dias);
+}
+
+// Cuantos dias despues del checkout seguimos recordando una reserva de Booking.
+// Booking saca la reserva del feed el dia del checkout (a veces el dia antes),
+// asi que hay que recordarla un poco mas para no perder la limpieza de ese dia.
+const RETENCION_ESTADIA_DIAS = 3;
+
+/**
+ * Consolida las reservas de Booking de todas las propiedades combinando el feed
+ * actual con la memoria previa. Resuelve DOS mañas de Booking:
+ *  - corre el DTSTART de una reserva en curso al "dia de hoy" (falso check-in);
+ *  - SACA la reserva del feed el dia del checkout (se pierde la limpieza).
+ * Reconocemos la misma reserva por solapamiento de fechas (no por UID, que
+ * Booking cambia cada vez) y conservamos su llegada/salida REAL. Ademas, una
+ * reserva que ya no esta en el feed pero cuyo checkout es reciente (ventana de
+ * RETENCION dias hasta manana) se mantiene, para no perder esa limpieza.
+ *
+ * Devuelve { reservas: {[cod]: [{checkin, checkout, conocida}]}, estadias:{...}}
+ * donde "estadias" es lo que se persiste para el proximo sync.
+ */
+function consolidarBooking(properties, icsResultsByCode, estadiasPrev = {}, hoy = null) {
+  const reservas = {};
+  const estadias = {};
+  const limite = hoy ? isoMenosDias(hoy, RETENCION_ESTADIA_DIAS) : null;
+  const manana = hoy ? isoMasDias(hoy, 1) : null;
+
+  for (const prop of properties) {
+    const icsTexts = icsParaPropiedad(prop, icsResultsByCode);
+    const prev = (estadiasPrev[prop.codigo] || []).map((e) => ({ ...e, _usada: false }));
+    const consolidadas = [];
+
+    // 1. Reservas presentes en el feed, matcheando contra la memoria.
+    for (const r of reservasBooking(icsTexts)) {
+      const match = prev.find((e) => !e._usada && seSolapan(e.checkin, e.checkout, r.start, r.end));
+      let checkin = r.start;
+      let checkout = r.end;
+      if (match) {
+        match._usada = true;
+        if (match.checkin < checkin) checkin = match.checkin; // llegada real mas temprana
+        if (match.checkout > checkout) checkout = match.checkout; // por si extendio
+      }
+      consolidadas.push({ checkin, checkout, conocida: !!match });
+    }
+
+    // 2. Estadias que el feed ya no tiene pero cuyo checkout es reciente/inminente:
+    //    Booking las saca el dia del checkout, no queremos perder esa limpieza.
+    //    Una reserva CANCELADA desaparece bastante antes del checkout, asi que
+    //    solo rescatamos las que salen entre hace RETENCION dias y manana.
+    for (const e of prev) {
+      if (e._usada) continue;
+      if (!hoy || (e.checkout > limite && e.checkout <= manana)) {
+        consolidadas.push({ checkin: e.checkin, checkout: e.checkout, conocida: true });
+      }
+    }
+
+    if (consolidadas.length) reservas[prop.codigo] = consolidadas;
+    // Persistir las vigentes (checkout dentro de la ventana de retencion o futuro).
+    const vigentes = consolidadas
+      .filter((r) => !hoy || r.checkout > limite)
+      .map((r) => ({ checkin: r.checkin, checkout: r.checkout }));
+    if (vigentes.length) estadias[prop.codigo] = vigentes;
+  }
+
+  return { reservas, estadias };
+}
+
 function mkCheckin(prop, date, platform, overrides) {
   const id = `${prop.codigo}_checkin_${date}`;
   return {
@@ -209,64 +295,34 @@ function mkCheckin(prop, date, platform, overrides) {
 }
 
 /**
- * Construye la lista de check-ins (llegadas de huespedes) para todas las
- * propiedades. No genera tareas ni asignacion; guarda un flag "done" (via
- * overrides) para marcar en el calendario que la llegada ya se gestiono.
+ * Construye la lista de check-ins (llegadas de huespedes). No genera tareas ni
+ * asignacion; guarda un flag "done" (via overrides) para marcar en el
+ * calendario que la llegada ya se gestiono.
  *
- * Problema con Booking: cada vez que regenera el feed, corre el DTSTART de una
- * reserva EN CURSO al "dia de hoy" (un huesped que entro el 20 y sigue adentro
- * aparece como si "llegara" hoy, manana, etc) y ademas cambia el UID. En el
- * feed de UN dia una llegada real de hoy y una reserva en curso corrida a hoy
- * son identicas, asi que no se pueden distinguir sin memoria.
- *
- * Solucion: guardamos cada estadia de Booking la primera vez que la vemos, con
- * su fecha de llegada REAL. En syncs siguientes la reconocemos por solapamiento
- * de fechas (no por UID, que cambia) aunque Booking corra el inicio o la
- * extienda, y usamos la llegada original. Emitimos un check-in de Booking solo
- * si su llegada real es futura, o es hoy y ya la conociamos de antes (una
- * llegada agendada que ya vimos como futura). Airbnb/Vrbo no tienen este
- * problema y su fecha de llegada se toma tal cual.
- *
- * Devuelve { checkins, estadias } donde "estadias" es el mapa a persistir para
- * el proximo sync: { [codigo]: [{ checkin, checkout }] }.
+ * Airbnb/Vrbo: la fecha de llegada del feed es confiable, se toma tal cual.
+ * Booking: se toman de la memoria consolidada (ver consolidarBooking), que
+ * resuelve el DTSTART corrido. Emitimos un check-in de Booking solo si su
+ * llegada real es futura, o es hoy y ya la conociamos de antes (agendada); una
+ * reserva nueva que arranca hoy sin historial se asume en curso y no se emite.
  */
-function buildCheckins(properties, icsResultsByCode, overrides = {}, hoy = null, estadiasPrev = {}) {
+function buildCheckins(properties, icsResultsByCode, overrides = {}, hoy = null, reservasBookingPorCod = null) {
   const checkins = [];
-  const estadias = {};
 
   for (const prop of properties) {
     const icsTexts = icsParaPropiedad(prop, icsResultsByCode);
 
-    // Airbnb / Vrbo: la fecha de llegada del feed es confiable.
+    // Airbnb / Vrbo.
     const llegadasNoBooking = checkinsForProperty({ ...icsTexts, booking: null });
     for (const c of llegadasNoBooking) {
       checkins.push(mkCheckin(prop, c.date, c.platform, overrides));
     }
 
-    // Booking: reconocer la estadia por solapamiento contra lo ya visto.
-    const prev = (estadiasPrev[prop.codigo] || []).map((e) => ({ ...e }));
-    const vigentes = [];
-    for (const r of reservasBooking(icsTexts)) {
-      const match = prev.find((e) => !e._usada && seSolapan(e.checkin, e.checkout, r.start, r.end));
-      const conocida = !!match;
-      let checkinReal = r.start;
-      let checkout = r.end;
-      if (match) {
-        match._usada = true;
-        // La llegada real es la mas temprana vista; el checkout, el mas tardio
-        // (por si el huesped extendio).
-        if (match.checkin < checkinReal) checkinReal = match.checkin;
-        if (match.checkout > checkout) checkout = match.checkout;
-      }
-      // Recordar la estadia mientras siga vigente (checkout futuro).
-      if (!hoy || checkout > hoy) vigentes.push({ checkin: checkinReal, checkout });
-      // Emitir el check-in solo si es una llegada futura, o es hoy y ya la
-      // conociamos (agendada). Una estadia nueva que arranca hoy/ayer sin
-      // historial se asume reserva en curso (DTSTART corrido) y no se emite.
-      const emitir = !hoy || checkinReal > hoy || (checkinReal === hoy && conocida);
-      if (emitir) checkins.push(mkCheckin(prop, checkinReal, "booking", overrides));
+    // Booking desde la memoria consolidada.
+    const reservas = reservasBookingPorCod ? reservasBookingPorCod[prop.codigo] || [] : [];
+    for (const r of reservas) {
+      const emitir = !hoy || r.checkin > hoy || (r.checkin === hoy && r.conocida);
+      if (emitir) checkins.push(mkCheckin(prop, r.checkin, "booking", overrides));
     }
-    if (vigentes.length) estadias[prop.codigo] = vigentes;
   }
 
   // Dedup por id (misma propiedad + misma fecha, si dos plataformas coincidieran).
@@ -277,7 +333,7 @@ function buildCheckins(properties, icsResultsByCode, overrides = {}, hoy = null,
     seen.add(c.id);
     unicos.push(c);
   }
-  return { checkins: unicos, estadias };
+  return unicos;
 }
 
-module.exports = { checkoutsForProperty, checkinsForProperty, pickAssignee, buildTasks, buildCheckins, isRealReservationCheckout };
+module.exports = { checkoutsForProperty, checkinsForProperty, pickAssignee, buildTasks, buildCheckins, consolidarBooking, isRealReservationCheckout };
