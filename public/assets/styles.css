@@ -442,3 +442,18 @@ main {
 .ing-plat.airbnb { background: #ffe8ec; color: #c13366; }
 .ing-plat.booking { background: #e4ecfb; color: #22509e; }
 .ing-nota { font-size: 12px; color: var(--text-muted); margin-top: 12px; line-height: 1.4; }
+
+/* ---- Ingresos: toolbar, banner y config (Fase 2) ---- */
+.ing-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 18px 0 4px; flex-wrap: wrap; }
+.ing-toolbar .ing-periodos { margin: 0; }
+.ing-banner { background: var(--coral-bg); color: var(--coral-fg); border-radius: var(--radius); padding: 10px 12px; font-size: 13px; margin: 10px 0; }
+.ing-banner .link-edit { color: var(--coral-fg); font-weight: 700; }
+.ing-tabla tr.ing-sin td { background: #fff8f2; }
+.ing-tag { display: inline-block; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; color: var(--coral-fg); background: var(--coral-bg); padding: 1px 6px; border-radius: 6px; margin-left: 4px; }
+.ing-cfg-list { margin: 14px 0; display: flex; flex-direction: column; gap: 8px; }
+.ing-cfg-row { border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 12px; display: grid; grid-template-columns: 1fr auto; grid-template-areas: "nom nom" "depto propio"; gap: 8px 10px; align-items: center; }
+.ing-cfg-nom { grid-area: nom; font-size: 13px; font-weight: 600; line-height: 1.35; }
+.ing-cfg-loc { display: block; font-size: 11px; color: var(--text-muted); font-weight: 400; }
+.ing-cfg-depto { grid-area: depto; border: 1px solid var(--border); border-radius: var(--radius); padding: 8px 10px; font-size: 13px; background: var(--surface); max-width: 100%; }
+.ing-cfg-propio { grid-area: propio; display: inline-flex; align-items: center; gap: 5px; font-size: 13px; color: var(--text-secondary); white-space: nowrap; }
+.ing-cfg-actions { display: flex; gap: 8px; justify-content: flex-end; position: sticky; bottom: 8px; background: var(--bg); padding: 8px 0; }

@@ -2,36 +2,41 @@
 // para poder testearlo con node. Lo usa la pantalla "Ingresos" (app.js) sobre
 // las filas que devuelve el lector de planillas (SheetJS), y tambien los tests.
 //
-// Fuentes:
-//  - Airbnb: export "Ganancias/Transacciones" (CSV). Cada reserva trae un tipo:
-//      "Reserva"               -> sos el anfitrion (host directo)
-//      "Cobro como coanfitrion"-> sos co-host, el monto ya es TU parte
-//      "Payout"                -> transferencia (se ignora para atribuir)
-//      "Ajuste"                -> correccion de una reserva (se suma al grupo)
-//    El pago de Airbnb YA viene neto de la comision de Airbnb.
-//  - Booking: export de reservas. Trae Total Payment (100%) y Commission (lo
-//    que cobra Booking). El cobro lo hace Esteban directo al huesped.
+// Dos etapas separadas a proposito:
+//   1) parseArchivos(airbnbRows, bookingRows) -> reservas CRUDAS (lo que se
+//      guarda por mes; no depende de ninguna config).
+//   2) computeIngresos(reservasCrudas, cfg)   -> aplica el reparto usando el
+//      mapeo unidad->depto y la marca propio/tercero. Asi, cambiar el mapeo
+//      recalcula todo sin volver a subir los archivos.
 //
-// Formulas (validadas con Esteban, julio 2026):
+// Fuentes:
+//  - Airbnb: export "Ganancias/Transacciones". Filas: "Reserva" (host directo),
+//    "Cobro como coanfitrion" (el monto ya es la parte de Esteban),
+//    "Payout" (se ignora), "Ajuste" (se suma al grupo por codigo). El pago de
+//    Airbnb YA viene neto de la comision de Airbnb.
+//  - Booking: export de reservas. Total Payment (100%), Commission (comision de
+//    Booking). Esteban cobra directo al huesped; Booking no trae limpieza.
+//
+// Formulas (validadas con Esteban; el 15% va sobre la base YA sin limpieza):
 //  Airbnb co-anfitrion         -> vos = monto liquidado;           dueño = 0
 //  Airbnb host directo, propio -> vos = deposito;                  dueño = 0
 //  Airbnb host directo, tercero-> dueño = (deposito - limpieza) * 0.85 * 0.92
-//                                 vos   = deposito - dueño
 //  Booking propio              -> vos = total - comisionBooking;   dueño = 0
 //  Booking tercero             -> dueño = (total - comisionBooking - limpieza) * 0.85
-//                                 vos   = (total - comisionBooking) - dueño
-//  (El "costo chicas" — lo que se paga a la limpieza — se resta en una capa
-//   posterior; aca todavia no.)
 
 (function (root) {
   "use strict";
 
   const CONFIG_DEFAULT = {
-    // Palabras clave (en minuscula) para reconocer los deptos PROPIOS de Esteban
-    // (se queda el 100%, sin pago a dueño). Editable desde la pantalla de config.
-    propioAirbnb: ["cañitas", "chacarita"], // San Benito, Dorrego (Manzanares va como co-anfitrion)
+    // Mapeo de unidad (nombre de anuncio Airbnb / Property Name de Booking) a
+    // { codigo, propio }. Lo edita la pantalla de config (Fase 2). Vacio = nada
+    // asociado todavia.
+    mapeo: {},
+    // Fallback para marcar PROPIO cuando una unidad no esta en el mapeo (para no
+    // romper los numeros antes de configurar). San Benito, Dorrego.
+    propioAirbnb: ["cañitas", "chacarita"],
     propioBooking: ["dorrego", "san benito"],
-    limpiezaBooking: 30, // el export de Booking no trae limpieza; tarifa fija por depto (USD)
+    limpiezaBooking: 30, // el export de Booking no trae limpieza; tarifa fija (USD)
   };
 
   function num(v) {
@@ -40,119 +45,111 @@
     const n = parseFloat(s);
     return isFinite(n) ? n : 0;
   }
-
   function contieneAlguna(texto, claves) {
     const t = (texto || "").toLowerCase();
-    return claves.some((k) => t.includes(k));
+    return (claves || []).some((k) => t.includes(k));
   }
-
   function round2(n) {
     return Math.round(n * 100) / 100;
   }
 
-  // ---- AIRBNB ----
-  // Agrupa filas por codigo de confirmacion y calcula por reserva.
-  function calcularAirbnb(rows, cfg) {
+  // ---- PARSEO (reservas crudas, sin reparto) ----
+  function parseAirbnb(rows) {
     const grupos = new Map();
     for (const r of rows) {
       const tipo = String(r["Tipo"] || "").trim();
       const cod = String(r["Código de confirmación"] || r["Codigo de confirmación"] || "").trim();
       if (tipo === "Payout" || !cod) continue;
       if (!grupos.has(cod)) {
-        grupos.set(cod, { cod, anuncio: "", tipo: null, deposito: 0, limpieza: 0, inicio: "", fin: "", huesped: "" });
+        grupos.set(cod, { plataforma: "airbnb", codigoReserva: cod, unidad: "", tipoAirbnb: null, deposito: 0, limpieza: 0, inicio: "", fin: "", huesped: "" });
       }
       const g = grupos.get(cod);
-      g.anuncio = String(r["Anuncio"] || "").trim() || g.anuncio;
+      g.unidad = String(r["Anuncio"] || "").trim() || g.unidad;
       g.deposito += num(r["Monto"]);
       if (tipo !== "Ajuste") {
-        g.tipo = tipo;
+        g.tipoAirbnb = tipo === "Cobro como coanfitrión" || tipo === "Cobro como coanfitrion" ? "coanfitrion" : "reserva";
         g.limpieza = Math.max(g.limpieza, num(r["Tarifa de limpieza"]));
         g.inicio = String(r["Fecha de inicio"] || "").trim();
         g.fin = String(r["Fecha de finalización"] || "").trim();
         g.huesped = String(r["Huésped"] || "").trim();
       }
     }
-    const reservas = [];
-    for (const g of grupos.values()) {
-      const coanfitrion = g.tipo === "Cobro como coanfitrión" || g.tipo === "Cobro como coanfitrion";
-      const propio = contieneAlguna(g.anuncio, cfg.propioAirbnb);
-      let vos, dueno, modalidad;
-      if (coanfitrion) {
+    for (const g of grupos.values()) g.deposito = round2(g.deposito);
+    return Array.from(grupos.values());
+  }
+
+  function parseBooking(rows) {
+    const out = [];
+    for (const r of rows) {
+      const nombre = String(r["Property Name"] || "").trim();
+      const total = num(r["Total Payment"]);
+      if (!nombre && !total) continue;
+      out.push({
+        plataforma: "booking",
+        codigoReserva: String(r["Reservation Number"] || "").replace(/\.0$/, ""),
+        unidad: nombre,
+        location: String(r["Location"] || "").trim().replace(/\s+/g, " "),
+        total,
+        comision: num(r["Commission"]),
+        inicio: String(r["Arrival"] || "").trim(),
+        fin: String(r["Departure"] || "").trim(),
+        huesped: String(r["Booker Name"] || "").trim(),
+      });
+    }
+    return out;
+  }
+
+  function parseArchivos(airbnbRows, bookingRows) {
+    return [
+      ...(airbnbRows ? parseAirbnb(airbnbRows) : []),
+      ...(bookingRows ? parseBooking(bookingRows) : []),
+    ];
+  }
+
+  // ---- REPARTO de una reserva cruda segun el mapeo ----
+  function repartir(r, cfg) {
+    const m = cfg.mapeo[r.unidad];
+    const codigo = m && m.codigo ? m.codigo : null;
+    let vos, dueno, modalidad, ingreso;
+    if (r.plataforma === "airbnb") {
+      ingreso = r.deposito;
+      const propio = m ? !!m.propio : contieneAlguna(r.unidad, cfg.propioAirbnb);
+      if (r.tipoAirbnb === "coanfitrion") {
         modalidad = "coanfitrion";
-        vos = g.deposito;
+        vos = r.deposito;
         dueno = 0;
       } else if (propio) {
         modalidad = "propio";
-        vos = g.deposito;
+        vos = r.deposito;
         dueno = 0;
       } else {
         modalidad = "host_tercero";
-        dueno = (g.deposito - g.limpieza) * 0.85 * 0.92;
-        vos = g.deposito - dueno;
+        dueno = (r.deposito - r.limpieza) * 0.85 * 0.92;
+        vos = r.deposito - dueno;
       }
-      reservas.push({
-        plataforma: "airbnb",
-        codigo: g.cod,
-        unidad: g.anuncio,
-        huesped: g.huesped,
-        inicio: g.inicio,
-        fin: g.fin,
-        modalidad,
-        ingreso: g.deposito,
-        limpieza: g.limpieza,
-        vos: round2(vos),
-        dueno: round2(dueno),
-      });
-    }
-    return reservas;
-  }
-
-  // ---- BOOKING ----
-  function calcularBooking(rows, cfg) {
-    const reservas = [];
-    for (const r of rows) {
-      const nombre = String(r["Property Name"] || "").trim();
-      const loc = String(r["Location"] || "").trim();
-      const total = num(r["Total Payment"]);
-      const com = num(r["Commission"]);
-      if (!nombre && !total) continue;
-      const propio = contieneAlguna(nombre + " " + loc, cfg.propioBooking);
-      const limpieza = cfg.limpiezaBooking;
-      let vos, dueno, modalidad;
-      const saldo = total - com;
+    } else {
+      ingreso = r.total;
+      const propio = m ? !!m.propio : contieneAlguna(r.unidad + " " + (r.location || ""), cfg.propioBooking);
+      const saldo = r.total - r.comision;
       if (propio) {
         modalidad = "propio";
         vos = saldo;
         dueno = 0;
       } else {
         modalidad = "tercero";
-        dueno = (saldo - limpieza) * 0.85;
+        dueno = (saldo - cfg.limpiezaBooking) * 0.85;
         vos = saldo - dueno;
       }
-      reservas.push({
-        plataforma: "booking",
-        codigo: String(r["Reservation Number"] || "").replace(/\.0$/, ""),
-        unidad: nombre,
-        huesped: String(r["Booker Name"] || "").trim(),
-        inicio: String(r["Arrival"] || "").trim(),
-        fin: String(r["Departure"] || "").trim(),
-        modalidad,
-        ingreso: total,
-        limpieza: propio ? 0 : limpieza,
-        vos: round2(vos),
-        dueno: round2(dueno),
-      });
     }
-    return reservas;
+    return { ...r, codigo, modalidad, ingreso: round2(ingreso), vos: round2(vos), dueno: round2(dueno) };
   }
 
-  // Agrupa una lista de reservas por unidad (anuncio/propiedad) y suma.
   function agrupar(reservas) {
     const map = new Map();
     for (const r of reservas) {
-      const key = r.plataforma + "||" + r.unidad;
+      const key = r.codigo ? "depto:" + r.codigo : r.plataforma + "||" + r.unidad;
       if (!map.has(key)) {
-        map.set(key, { plataforma: r.plataforma, unidad: r.unidad, modalidad: r.modalidad, n: 0, ingreso: 0, vos: 0, dueno: 0, reservas: [] });
+        map.set(key, { codigo: r.codigo || null, unidad: r.unidad, plataforma: r.plataforma, asociado: !!r.codigo, n: 0, ingreso: 0, vos: 0, dueno: 0, reservas: [] });
       }
       const g = map.get(key);
       g.n += 1;
@@ -160,42 +157,43 @@
       g.vos += r.vos;
       g.dueno += r.dueno;
       g.reservas.push(r);
+      // si un depto junta Airbnb+Booking, marcamos plataforma mixta
+      if (g.plataforma !== r.plataforma) g.plataforma = "mix";
     }
-    const out = Array.from(map.values()).map((g) => ({
-      ...g,
-      ingreso: round2(g.ingreso),
-      vos: round2(g.vos),
-      dueno: round2(g.dueno),
-    }));
+    const out = Array.from(map.values()).map((g) => ({ ...g, ingreso: round2(g.ingreso), vos: round2(g.vos), dueno: round2(g.dueno) }));
     out.sort((a, b) => b.vos - a.vos);
     return out;
   }
 
-  // Entrada principal: recibe las filas crudas de cada archivo (o null) y
-  // devuelve reservas, agrupado por unidad y totales.
-  function computeIngresos(airbnbRows, bookingRows, cfgOverride) {
+  // Lista de unidades unicas detectadas (para la pantalla de config).
+  function unidadesDetectadas(reservasCrudas) {
+    const map = new Map();
+    for (const r of reservasCrudas) {
+      if (!map.has(r.unidad)) map.set(r.unidad, { unidad: r.unidad, plataforma: r.plataforma, location: r.location || "", n: 0 });
+      map.get(r.unidad).n += 1;
+      if (r.plataforma === "booking" && r.location) map.get(r.unidad).location = r.location;
+    }
+    return Array.from(map.values()).sort((a, b) => a.unidad.localeCompare(b.unidad));
+  }
+
+  // Entrada principal: reservas CRUDAS (de parseArchivos) + config -> resultado.
+  function computeIngresos(reservasCrudas, cfgOverride) {
     const cfg = Object.assign({}, CONFIG_DEFAULT, cfgOverride || {});
-    const reservas = [
-      ...(airbnbRows ? calcularAirbnb(airbnbRows, cfg) : []),
-      ...(bookingRows ? calcularBooking(bookingRows, cfg) : []),
-    ];
-    const porUnidad = agrupar(reservas);
+    cfg.mapeo = (cfgOverride && cfgOverride.mapeo) || {};
+    const reservas = (reservasCrudas || []).map((r) => repartir(r, cfg));
+    const grupos = agrupar(reservas);
     const totales = reservas.reduce(
-      (acc, r) => {
-        acc.ingreso += r.ingreso;
-        acc.vos += r.vos;
-        acc.dueno += r.dueno;
-        return acc;
-      },
+      (a, r) => { a.ingreso += r.ingreso; a.vos += r.vos; a.dueno += r.dueno; return a; },
       { ingreso: 0, vos: 0, dueno: 0, n: reservas.length }
     );
     totales.ingreso = round2(totales.ingreso);
     totales.vos = round2(totales.vos);
     totales.dueno = round2(totales.dueno);
-    return { reservas, porUnidad, totales, cfg };
+    const sinAsociar = grupos.filter((g) => !g.asociado);
+    return { reservas, grupos, totales, sinAsociar, unidades: unidadesDetectadas(reservasCrudas || []) };
   }
 
-  const API = { computeIngresos, calcularAirbnb, calcularBooking, agrupar, num, CONFIG_DEFAULT };
+  const API = { parseArchivos, parseAirbnb, parseBooking, computeIngresos, repartir, agrupar, unidadesDetectadas, num, CONFIG_DEFAULT };
   if (typeof module !== "undefined" && module.exports) module.exports = API;
   else root.IngresosEngine = API;
 })(typeof self !== "undefined" ? self : this);

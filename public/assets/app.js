@@ -1447,6 +1447,8 @@ function openFaltanteForm(onDone) {
 // ---------- Ingresos ----------
 
 let INGRESOS_MES = null; // periodo (YYYY-MM) seleccionado
+let INGRESOS_VIEW = "resumen"; // "resumen" | "config"
+const INGRESOS_PROPIOS = ["1102", "1105", "1115"]; // San Benito, Manzanares, Dorrego
 
 // SheetJS pesa ~930KB: se carga bajo demanda solo al entrar a Ingresos, para no
 // hacérselo bajar a las chicas que solo usan Hoy/Tareas.
@@ -1488,12 +1490,23 @@ function fmtMesLargo(periodo) {
   return `${meses[Number(m) - 1] || m} ${y}`;
 }
 
+function nombreDepto(codigo) {
+  const p = (CONFIG.properties || []).find((x) => x.codigo === codigo);
+  return p ? p.direccion || p.nombre : codigo;
+}
+
 async function renderIngresos() {
   try {
-    const guardados = await fetchJSON(`${API}/ingresos`); // { [periodo]: payload }
+    const [guardados, cfg] = await Promise.all([fetchJSON(`${API}/ingresos`), fetchJSON(`${API}/ingresos-config`)]);
+    if (INGRESOS_VIEW === "config") return renderIngresosConfig(guardados, cfg);
+
     const periodos = Object.keys(guardados).sort().reverse();
     if (!INGRESOS_MES || !guardados[INGRESOS_MES]) INGRESOS_MES = periodos[0] || null;
-    const data = INGRESOS_MES ? guardados[INGRESOS_MES] : null;
+    const mes = INGRESOS_MES ? guardados[INGRESOS_MES] : null;
+    // Un mes importado con Fase 1 guardaba las reservas ya calculadas (sin los
+    // campos crudos). Si es asi, pedimos re-importar en vez de mostrar basura.
+    const formatoViejo = mes && mes.reservas && mes.reservas.length && !mes.reservas.some((r) => r.tipoAirbnb !== undefined || r.total !== undefined);
+    const calc = mes && mes.reservas && !formatoViejo ? IngresosEngine.computeIngresos(mes.reservas, cfg) : null;
 
     setMain(`
       <h1 class="ab-headline">Ingresos por departamento</h1>
@@ -1511,12 +1524,16 @@ async function renderIngresos() {
         <div id="ing-status" class="ing-status"></div>
       </div>
 
-      ${periodos.length ? `<div class="ing-periodos">${periodos.map((p) => `<button class="chip ${p === INGRESOS_MES ? "on" : ""}" data-periodo="${p}">${fmtMesLargo(p)}</button>`).join("")}</div>` : ""}
+      <div class="ing-toolbar">
+        <div class="ing-periodos">${periodos.map((p) => `<button class="chip ${p === INGRESOS_MES ? "on" : ""}" data-periodo="${p}">${fmtMesLargo(p)}</button>`).join("")}</div>
+        <button class="link-edit" data-ing-config>⚙️ Asociar deptos</button>
+      </div>
 
-      <div id="ing-resultado">${data ? ingresosResultadoHTML(data) : `<div class="empty-state">Todavía no importaste ningún mes.</div>`}</div>
+      <div id="ing-resultado">${formatoViejo ? `<div class="ing-banner">Este mes se importó con una versión anterior. Volvé a subir los archivos para verlo actualizado.</div>` : calc ? ingresosResultadoHTML(calc, INGRESOS_MES) : `<div class="empty-state">Todavía no importaste ningún mes.</div>`}</div>
     `);
 
     document.getElementById("ing-procesar").onclick = procesarImportIngresos;
+    document.querySelector("[data-ing-config]").onclick = () => { INGRESOS_VIEW = "config"; renderIngresos(); };
     document.querySelectorAll("[data-periodo]").forEach((b) => {
       b.onclick = () => { INGRESOS_MES = b.getAttribute("data-periodo"); renderIngresos(); };
     });
@@ -1549,14 +1566,11 @@ async function procesarImportIngresos() {
     await cargarSheetJS();
     const air = fAir ? await leerPlanilla(fAir) : null;
     const bkg = fBkg ? await leerPlanilla(fBkg) : null;
-    const res = IngresosEngine.computeIngresos(air, bkg);
-    const payload = {
-      totales: res.totales,
-      porUnidad: res.porUnidad,
-      reservas: res.reservas,
-      cfg: res.cfg,
-      origen: { airbnb: !!air, booking: !!bkg },
-    };
+    // Se guardan las reservas CRUDAS; el reparto se recalcula al mostrar segun
+    // el mapeo, asi cambiar la asociacion no obliga a re-subir los archivos.
+    const reservas = IngresosEngine.parseArchivos(air, bkg);
+    if (reservas.length === 0) throw new Error("No encontré reservas en los archivos");
+    const payload = { reservas, origen: { airbnb: !!air, booking: !!bkg } };
     await fetchJSON(`${API}/ingresos`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ periodo: mes, payload }) });
     INGRESOS_MES = mes;
     toast("Mes procesado y guardado");
@@ -1567,32 +1581,95 @@ async function procesarImportIngresos() {
   }
 }
 
-function ingresosResultadoHTML(data) {
-  const t = data.totales || { vos: 0, dueno: 0, ingreso: 0, n: 0 };
-  const unidades = data.porUnidad || [];
-  const nRes = t.n || unidades.reduce((a, u) => a + u.n, 0);
+function ingresosResultadoHTML(calc, periodo) {
+  const t = calc.totales;
+  const grupos = calc.grupos;
+  const sinN = calc.sinAsociar.length;
+  const fila = (g) => `
+    <tr class="${g.asociado ? "" : "ing-sin"}">
+      <td>${g.asociado ? `<b>${nombreDepto(g.codigo)}</b>` : `<span class="ing-plat ${g.plataforma}">${g.plataforma === "airbnb" ? "Airbnb" : "Booking"}</span> ${g.unidad} <span class="ing-tag">sin asignar</span>`}</td>
+      <td class="num">${g.n}</td>
+      <td class="num vos">${usd(g.vos)}</td>
+      <td class="num dueno">${g.dueno > 0 ? usd(g.dueno) : "—"}</td>
+    </tr>`;
   return `
     <div class="ing-totales">
       <div class="ing-kpi vos"><span class="lbl">Ganás vos</span><span class="val">${usd(t.vos)}</span></div>
       <div class="ing-kpi dueno"><span class="lbl">A los dueños</span><span class="val">${usd(t.dueno)}</span></div>
     </div>
-    <div class="ab-sub ing-resumen">${fmtMesLargo(data.periodo)} · ${nRes} reservas · ingreso total ${usd(t.ingreso)}<button class="link-danger" data-del-periodo="${data.periodo}">Borrar mes</button></div>
+    <div class="ab-sub ing-resumen">${fmtMesLargo(periodo)} · ${t.n} reservas · ingreso total ${usd(t.ingreso)}<button class="link-danger" data-del-periodo="${periodo}">Borrar mes</button></div>
+    ${sinN ? `<div class="ing-banner">Hay ${sinN} anuncio${sinN !== 1 ? "s" : ""} sin asignar a un departamento. <button class="link-edit" data-ing-config>Asociar ahora →</button></div>` : ""}
     <div class="ing-tabla-wrap">
       <table class="ing-tabla">
-        <thead><tr><th>Depto / anuncio</th><th>Res.</th><th>Ganás vos</th><th>Al dueño</th></tr></thead>
-        <tbody>
-          ${unidades.map((u) => `
-            <tr>
-              <td><span class="ing-plat ${u.plataforma}">${u.plataforma === "airbnb" ? "Airbnb" : "Booking"}</span> ${u.unidad}</td>
-              <td class="num">${u.n}</td>
-              <td class="num vos">${usd(u.vos)}</td>
-              <td class="num dueno">${u.dueno > 0 ? usd(u.dueno) : "—"}</td>
-            </tr>`).join("")}
-        </tbody>
+        <thead><tr><th>Departamento</th><th>Res.</th><th>Ganás vos</th><th>Al dueño</th></tr></thead>
+        <tbody>${grupos.map(fila).join("")}</tbody>
       </table>
     </div>
-    <p class="ing-nota">Todavía no se resta el costo de limpieza que pagás a las chicas (próxima etapa). Los deptos co-anfitrión o propios no tienen pago a dueño. La asociación de cada anuncio a un departamento y su modalidad se ajusta en la etapa siguiente.</p>
+    <p class="ing-nota">Todavía no se resta el costo de limpieza que pagás a las chicas (próxima etapa). Los deptos co-anfitrión o propios no tienen pago a dueño.</p>
   `;
+}
+
+// ---- Pantalla de asociación anuncio/propiedad -> departamento ----
+async function renderIngresosConfig(guardados, cfg) {
+  // Juntar todas las unidades vistas en todos los meses importados.
+  const crudas = [];
+  for (const p of Object.values(guardados)) if (p.reservas) crudas.push(...p.reservas);
+  const unidades = IngresosEngine.unidadesDetectadas(crudas);
+  const props = CONFIG.properties || [];
+  const mapeo = cfg.mapeo || {};
+
+  const opciones = (sel) =>
+    `<option value="">— sin asignar —</option>` +
+    props.map((p) => `<option value="${p.codigo}" ${p.codigo === sel ? "selected" : ""}>${p.direccion || p.nombre}</option>`).join("");
+
+  setMain(`
+    <h1 class="ab-headline">Asociar anuncios a departamentos</h1>
+    <div class="ab-sub">A cada anuncio de Airbnb / propiedad de Booking asignale su departamento. Marcá "Propio" si el depto es tuyo (te quedás el 100%, sin pago a dueño).</div>
+    ${unidades.length === 0 ? `<div class="empty-state">Importá un mes primero para ver los anuncios.</div>` : ""}
+    <div class="ing-cfg-list">
+      ${unidades
+        .map((u) => {
+          const m = mapeo[u.unidad] || {};
+          return `
+        <div class="ing-cfg-row" data-unidad="${encodeURIComponent(u.unidad)}">
+          <div class="ing-cfg-nom"><span class="ing-plat ${u.plataforma}">${u.plataforma === "airbnb" ? "Airbnb" : "Booking"}</span> ${u.unidad}${u.location ? `<span class="ing-cfg-loc">${u.location}</span>` : ""}</div>
+          <select class="ing-cfg-depto">${opciones(m.codigo || "")}</select>
+          <label class="ing-cfg-propio"><input type="checkbox" class="ing-cfg-chk" ${m.propio ? "checked" : ""} /> Propio</label>
+        </div>`;
+        })
+        .join("")}
+    </div>
+    <div class="ing-cfg-actions">
+      <button class="btn-secondary" data-ing-volver>Volver</button>
+      <button class="btn-primary" data-ing-guardar>Guardar asociaciones</button>
+    </div>
+  `);
+
+  document.querySelector("[data-ing-volver]").onclick = () => { INGRESOS_VIEW = "resumen"; renderIngresos(); };
+
+  // Al elegir un depto propio conocido, pre-marcar "Propio".
+  document.querySelectorAll(".ing-cfg-row").forEach((row) => {
+    const sel = row.querySelector(".ing-cfg-depto");
+    const chk = row.querySelector(".ing-cfg-chk");
+    sel.onchange = () => { if (INGRESOS_PROPIOS.includes(sel.value)) chk.checked = true; };
+  });
+
+  document.querySelector("[data-ing-guardar]").onclick = async () => {
+    const nuevoMapeo = {};
+    document.querySelectorAll(".ing-cfg-row").forEach((row) => {
+      const unidad = decodeURIComponent(row.getAttribute("data-unidad"));
+      const codigo = row.querySelector(".ing-cfg-depto").value;
+      if (codigo) nuevoMapeo[unidad] = { codigo, propio: row.querySelector(".ing-cfg-chk").checked };
+    });
+    try {
+      await fetchJSON(`${API}/ingresos-config`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mapeo: nuevoMapeo }) });
+      INGRESOS_VIEW = "resumen";
+      toast("Asociaciones guardadas");
+      renderIngresos();
+    } catch (err) {
+      toast("No se pudo guardar: " + err.message);
+    }
+  };
 }
 
 // ---------- Lavanderia ----------
