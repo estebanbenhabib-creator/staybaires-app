@@ -411,3 +411,34 @@ main {
   text-align: center;
   z-index: 50;
 }
+
+/* ---- Ingresos ---- */
+.ing-import { margin-top: 16px; }
+.ing-import .card-title { margin-bottom: 8px; }
+.ing-lbl { display: block; font-size: 12px; font-weight: 600; color: var(--text-secondary); margin: 12px 0 4px; }
+.ing-import input[type="month"] { width: 100%; box-sizing: border-box; border: 1px solid var(--border); border-radius: var(--radius); padding: 9px 10px; font-size: 14px; background: var(--surface); }
+.ing-import input[type="file"] { width: 100%; box-sizing: border-box; font-size: 13px; }
+.ing-import .btn-primary { margin-top: 14px; width: 100%; }
+.ing-status { font-size: 13px; color: var(--text-secondary); margin-top: 8px; min-height: 16px; }
+.ing-periodos { display: flex; flex-wrap: wrap; gap: 6px; margin: 18px 0 4px; }
+.ing-periodos .chip { cursor: pointer; text-transform: capitalize; }
+.ing-periodos .chip.on { background: var(--navy); color: #fff; border-color: var(--navy); }
+.ing-totales { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 14px 0 6px; }
+.ing-kpi { border-radius: var(--radius); padding: 14px; display: flex; flex-direction: column; gap: 4px; }
+.ing-kpi .lbl { font-size: 12px; font-weight: 600; opacity: 0.85; }
+.ing-kpi .val { font-size: 22px; font-weight: 800; letter-spacing: -0.3px; }
+.ing-kpi.vos { background: #e6f4ee; color: #0f6e56; }
+.ing-kpi.dueno { background: #eef1f6; color: var(--navy); }
+.ing-resumen { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 8px 0 10px; }
+.ing-resumen .link-danger { margin-left: auto; }
+.ing-tabla-wrap { overflow-x: auto; }
+.ing-tabla { width: 100%; border-collapse: collapse; font-size: 13px; }
+.ing-tabla th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 0.03em; color: var(--text-muted); font-weight: 700; padding: 6px 8px; border-bottom: 2px solid var(--border); }
+.ing-tabla th:nth-child(n+2), .ing-tabla td.num { text-align: right; white-space: nowrap; }
+.ing-tabla td { padding: 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
+.ing-tabla td.vos { font-weight: 700; color: #0f6e56; }
+.ing-tabla td.dueno { color: var(--navy); }
+.ing-plat { display: inline-block; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; padding: 1px 6px; border-radius: 6px; margin-right: 4px; vertical-align: middle; }
+.ing-plat.airbnb { background: #ffe8ec; color: #c13366; }
+.ing-plat.booking { background: #e4ecfb; color: #22509e; }
+.ing-nota { font-size: 12px; color: var(--text-muted); margin-top: 12px; line-height: 1.4; }

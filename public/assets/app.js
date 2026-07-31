@@ -4,11 +4,12 @@
 const API = "/api";
 const ICONS = {
   hoy: "🏠", calendario: "📅", tareas: "✅", empleadas: "👥", pagos: "💵",
-  insumos: "📦", lavanderia: "🧺", mispagos: "💵",
+  insumos: "📦", lavanderia: "🧺", mispagos: "💵", ingresos: "📊",
 };
 const TITLES = {
   hoy: "Hoy", calendario: "Calendario", tareas: "Tareas", empleadas: "Colaboradores",
   pagos: "Pagos", insumos: "Insumos", lavanderia: "Lavanderia", mispagos: "Mis pagos",
+  ingresos: "Ingresos",
 };
 // Tipos de tarea que se cargan a mano (no vienen de los calendarios). Para
 // sumar uno nuevo en el futuro, agregarlo a esta lista.
@@ -285,6 +286,7 @@ function renderTab(tab) {
     mispagos: renderMisPagos,
     insumos: renderInsumos,
     lavanderia: renderLavanderia,
+    ingresos: renderIngresos,
   };
   (handlers[tab] || (() => setMain("")))();
 }
@@ -1440,6 +1442,157 @@ function openFaltanteForm(onDone) {
       toast("No se pudo marcar: " + err.message);
     }
   };
+}
+
+// ---------- Ingresos ----------
+
+let INGRESOS_MES = null; // periodo (YYYY-MM) seleccionado
+
+// SheetJS pesa ~930KB: se carga bajo demanda solo al entrar a Ingresos, para no
+// hacérselo bajar a las chicas que solo usan Hoy/Tareas.
+function cargarSheetJS() {
+  if (window.XLSX) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const s = document.createElement("script");
+    s.src = "/assets/vendor/xlsx.full.min.js";
+    s.onload = () => resolve();
+    s.onerror = () => reject(new Error("No se pudo cargar el lector de planillas"));
+    document.head.appendChild(s);
+  });
+}
+
+// Lee la primera hoja de un archivo (.csv/.xls/.xlsx) como array de objetos.
+function leerPlanilla(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const wb = XLSX.read(new Uint8Array(e.target.result), { type: "array" });
+        resolve(XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: "" }));
+      } catch (err) {
+        reject(new Error("El archivo no se pudo leer como planilla"));
+      }
+    };
+    reader.onerror = () => reject(new Error("No se pudo leer el archivo"));
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+function usd(n) {
+  return "US$ " + (n || 0).toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function fmtMesLargo(periodo) {
+  const [y, m] = String(periodo || "").split("-");
+  const meses = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
+  return `${meses[Number(m) - 1] || m} ${y}`;
+}
+
+async function renderIngresos() {
+  try {
+    const guardados = await fetchJSON(`${API}/ingresos`); // { [periodo]: payload }
+    const periodos = Object.keys(guardados).sort().reverse();
+    if (!INGRESOS_MES || !guardados[INGRESOS_MES]) INGRESOS_MES = periodos[0] || null;
+    const data = INGRESOS_MES ? guardados[INGRESOS_MES] : null;
+
+    setMain(`
+      <h1 class="ab-headline">Ingresos por departamento</h1>
+      <div class="ab-sub">Importás los reportes de Airbnb y Booking y la app calcula, por depto, cuánto ganás vos y cuánto va a cada dueño (en USD).</div>
+
+      <div class="card ing-import">
+        <p class="card-title">Importar un mes</p>
+        <label class="ing-lbl">Mes</label>
+        <input type="month" id="ing-mes" value="${INGRESOS_MES || todayISO().slice(0, 7)}" />
+        <label class="ing-lbl">Airbnb — export de Ganancias (.csv / .xlsx)</label>
+        <input type="file" id="ing-air" accept=".csv,.xlsx,.xls" />
+        <label class="ing-lbl">Booking — export de Reservas (.xls / .xlsx / .csv)</label>
+        <input type="file" id="ing-bkg" accept=".csv,.xlsx,.xls" />
+        <button class="btn-primary" id="ing-procesar">Procesar y guardar</button>
+        <div id="ing-status" class="ing-status"></div>
+      </div>
+
+      ${periodos.length ? `<div class="ing-periodos">${periodos.map((p) => `<button class="chip ${p === INGRESOS_MES ? "on" : ""}" data-periodo="${p}">${fmtMesLargo(p)}</button>`).join("")}</div>` : ""}
+
+      <div id="ing-resultado">${data ? ingresosResultadoHTML(data) : `<div class="empty-state">Todavía no importaste ningún mes.</div>`}</div>
+    `);
+
+    document.getElementById("ing-procesar").onclick = procesarImportIngresos;
+    document.querySelectorAll("[data-periodo]").forEach((b) => {
+      b.onclick = () => { INGRESOS_MES = b.getAttribute("data-periodo"); renderIngresos(); };
+    });
+    const del = document.querySelector("[data-del-periodo]");
+    if (del) del.onclick = async () => {
+      if (!confirm("¿Borrar los ingresos de este mes?")) return;
+      try {
+        await fetchJSON(`${API}/ingresos`, { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ periodo: del.getAttribute("data-del-periodo") }) });
+        INGRESOS_MES = null;
+        toast("Mes borrado");
+        renderIngresos();
+      } catch (err) {
+        toast("No se pudo borrar: " + err.message);
+      }
+    };
+  } catch (err) {
+    setMain(`<div class="empty-state">No se pudo cargar Ingresos.<br>${err.message}</div>`);
+  }
+}
+
+async function procesarImportIngresos() {
+  const status = document.getElementById("ing-status");
+  const mes = document.getElementById("ing-mes").value;
+  const fAir = document.getElementById("ing-air").files[0];
+  const fBkg = document.getElementById("ing-bkg").files[0];
+  if (!mes) return toast("Elegí el mes");
+  if (!fAir && !fBkg) return toast("Subí al menos un archivo");
+  status.textContent = "Leyendo archivos…";
+  try {
+    await cargarSheetJS();
+    const air = fAir ? await leerPlanilla(fAir) : null;
+    const bkg = fBkg ? await leerPlanilla(fBkg) : null;
+    const res = IngresosEngine.computeIngresos(air, bkg);
+    const payload = {
+      totales: res.totales,
+      porUnidad: res.porUnidad,
+      reservas: res.reservas,
+      cfg: res.cfg,
+      origen: { airbnb: !!air, booking: !!bkg },
+    };
+    await fetchJSON(`${API}/ingresos`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ periodo: mes, payload }) });
+    INGRESOS_MES = mes;
+    toast("Mes procesado y guardado");
+    renderIngresos();
+  } catch (err) {
+    status.textContent = "";
+    toast("No se pudo procesar: " + err.message);
+  }
+}
+
+function ingresosResultadoHTML(data) {
+  const t = data.totales || { vos: 0, dueno: 0, ingreso: 0, n: 0 };
+  const unidades = data.porUnidad || [];
+  const nRes = t.n || unidades.reduce((a, u) => a + u.n, 0);
+  return `
+    <div class="ing-totales">
+      <div class="ing-kpi vos"><span class="lbl">Ganás vos</span><span class="val">${usd(t.vos)}</span></div>
+      <div class="ing-kpi dueno"><span class="lbl">A los dueños</span><span class="val">${usd(t.dueno)}</span></div>
+    </div>
+    <div class="ab-sub ing-resumen">${fmtMesLargo(data.periodo)} · ${nRes} reservas · ingreso total ${usd(t.ingreso)}<button class="link-danger" data-del-periodo="${data.periodo}">Borrar mes</button></div>
+    <div class="ing-tabla-wrap">
+      <table class="ing-tabla">
+        <thead><tr><th>Depto / anuncio</th><th>Res.</th><th>Ganás vos</th><th>Al dueño</th></tr></thead>
+        <tbody>
+          ${unidades.map((u) => `
+            <tr>
+              <td><span class="ing-plat ${u.plataforma}">${u.plataforma === "airbnb" ? "Airbnb" : "Booking"}</span> ${u.unidad}</td>
+              <td class="num">${u.n}</td>
+              <td class="num vos">${usd(u.vos)}</td>
+              <td class="num dueno">${u.dueno > 0 ? usd(u.dueno) : "—"}</td>
+            </tr>`).join("")}
+        </tbody>
+      </table>
+    </div>
+    <p class="ing-nota">Todavía no se resta el costo de limpieza que pagás a las chicas (próxima etapa). Los deptos co-anfitrión o propios no tienen pago a dueño. La asociación de cada anuncio a un departamento y su modalidad se ajusta en la etapa siguiente.</p>
+  `;
 }
 
 // ---------- Lavanderia ----------

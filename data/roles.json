@@ -1,7 +1,7 @@
 {
   "admin": {
     "label": "Admin",
-    "tabs": ["hoy", "calendario", "tareas", "empleadas", "pagos", "insumos"],
+    "tabs": ["hoy", "calendario", "tareas", "empleadas", "pagos", "insumos", "ingresos"],
     "scope": "todas"
   },
   "empleada": {
