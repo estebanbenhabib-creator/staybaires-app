@@ -1497,7 +1497,7 @@ function nombreDepto(codigo) {
 
 async function renderIngresos() {
   try {
-    const [guardados, cfg] = await Promise.all([fetchJSON(`${API}/ingresos`), fetchJSON(`${API}/ingresos-config`)]);
+    const [guardados, cfg, payCfg] = await Promise.all([fetchJSON(`${API}/ingresos`), fetchJSON(`${API}/ingresos-config`), fetchJSON(`${API}/pay-config`)]);
     if (INGRESOS_VIEW === "config") return renderIngresosConfig(guardados, cfg);
 
     const periodos = Object.keys(guardados).sort().reverse();
@@ -1506,7 +1506,22 @@ async function renderIngresos() {
     // Un mes importado con Fase 1 guardaba las reservas ya calculadas (sin los
     // campos crudos). Si es asi, pedimos re-importar en vez de mostrar basura.
     const formatoViejo = mes && mes.reservas && mes.reservas.length && !mes.reservas.some((r) => r.tipoAirbnb !== undefined || r.total !== undefined);
-    const calc = mes && mes.reservas && !formatoViejo ? IngresosEngine.computeIngresos(mes.reservas, cfg) : null;
+    // Al motor le sumamos el valor por depto (de Pagos) y la cotizacion para
+    // que reste el costo de limpieza de cada reserva.
+    const cfgCalc = Object.assign({}, cfg, { valorDepto: payCfg.valorDepto || {} });
+    const calc = mes && mes.reservas && !formatoViejo ? IngresosEngine.computeIngresos(mes.reservas, cfgCalc) : null;
+    // Viatico + plus + items del mes: costo operativo que se resta aparte (no se
+    // atribuye por depto). Sale de la liquidacion de Pagos de ese mes.
+    let opArs = 0;
+    if (calc && cfg.cotizacion > 0 && INGRESOS_MES) {
+      const [y, m] = INGRESOS_MES.split("-").map(Number);
+      const ult = String(new Date(y, m, 0).getDate()).padStart(2, "0");
+      try {
+        const liq = await fetchJSON(`${API}/payments?from=${INGRESOS_MES}-01&to=${INGRESOS_MES}-${ult}`);
+        opArs = (liq.summary || []).reduce((s, e) => s + (e.viatico || 0) + (e.plusDomingo || 0) + (e.plusFeriado || 0) + (e.itemsTotal || 0), 0);
+      } catch (e) {}
+    }
+    const opUsd = cfg.cotizacion > 0 ? Math.round((opArs / cfg.cotizacion) * 100) / 100 : 0;
 
     setMain(`
       <h1 class="ab-headline">Ingresos por departamento</h1>
@@ -1529,10 +1544,27 @@ async function renderIngresos() {
         <button class="link-edit" data-ing-config>⚙️ Asociar deptos</button>
       </div>
 
-      <div id="ing-resultado">${formatoViejo ? `<div class="ing-banner">Este mes se importó con una versión anterior. Volvé a subir los archivos para verlo actualizado.</div>` : calc ? ingresosResultadoHTML(calc, INGRESOS_MES) : `<div class="empty-state">Todavía no importaste ningún mes.</div>`}</div>
+      <div class="ing-cotiz">
+        <span class="ing-cotiz-lbl">Cotización · 1 USD =</span>
+        <input type="number" inputmode="numeric" id="ing-cotiz" value="${cfg.cotizacion || ""}" placeholder="ARS" />
+        <span>ARS</span>
+        <button class="btn-secondary" id="ing-cotiz-save">Guardar</button>
+      </div>
+
+      <div id="ing-resultado">${formatoViejo ? `<div class="ing-banner">Este mes se importó con una versión anterior. Volvé a subir los archivos para verlo actualizado.</div>` : calc ? ingresosResultadoHTML(calc, INGRESOS_MES, opUsd, cfg.cotizacion) : `<div class="empty-state">Todavía no importaste ningún mes.</div>`}</div>
     `);
 
     document.getElementById("ing-procesar").onclick = procesarImportIngresos;
+    document.getElementById("ing-cotiz-save").onclick = async () => {
+      const v = Number(document.getElementById("ing-cotiz").value) || 0;
+      try {
+        await fetchJSON(`${API}/ingresos-config`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mapeo: cfg.mapeo || {}, limpiezaBooking: cfg.limpiezaBooking, cotizacion: v }) });
+        toast("Cotización guardada");
+        renderIngresos();
+      } catch (err) {
+        toast("No se pudo guardar: " + err.message);
+      }
+    };
     document.querySelector("[data-ing-config]").onclick = () => { INGRESOS_VIEW = "config"; renderIngresos(); };
     document.querySelectorAll("[data-periodo]").forEach((b) => {
       b.onclick = () => { INGRESOS_MES = b.getAttribute("data-periodo"); renderIngresos(); };
@@ -1581,31 +1613,43 @@ async function procesarImportIngresos() {
   }
 }
 
-function ingresosResultadoHTML(calc, periodo) {
+function ingresosResultadoHTML(calc, periodo, opUsd, cotizacion) {
   const t = calc.totales;
   const grupos = calc.grupos;
   const sinN = calc.sinAsociar.length;
+  const conCosto = cotizacion > 0;
+  const netoFinal = Math.round((t.neto - (opUsd || 0)) * 100) / 100;
+  // Columna de ganancia: neta (ya sin costo de limpieza) si hay cotización.
+  const gananciaCol = conCosto ? "Ganás (neto)" : "Ganás vos";
   const fila = (g) => `
     <tr class="${g.asociado ? "" : "ing-sin"}">
       <td>${g.asociado ? `<b>${nombreDepto(g.codigo)}</b>` : `<span class="ing-plat ${g.plataforma}">${g.plataforma === "airbnb" ? "Airbnb" : "Booking"}</span> ${g.unidad} <span class="ing-tag">sin asignar</span>`}</td>
       <td class="num">${g.n}</td>
-      <td class="num vos">${usd(g.vos)}</td>
+      <td class="num vos">${usd(conCosto ? g.neto : g.vos)}</td>
       <td class="num dueno">${g.dueno > 0 ? usd(g.dueno) : "—"}</td>
     </tr>`;
   return `
     <div class="ing-totales">
-      <div class="ing-kpi vos"><span class="lbl">Ganás vos</span><span class="val">${usd(t.vos)}</span></div>
+      <div class="ing-kpi vos"><span class="lbl">Ganás vos${conCosto ? " (neto)" : ""}</span><span class="val">${usd(conCosto ? netoFinal : t.vos)}</span></div>
       <div class="ing-kpi dueno"><span class="lbl">A los dueños</span><span class="val">${usd(t.dueno)}</span></div>
     </div>
     <div class="ab-sub ing-resumen">${fmtMesLargo(periodo)} · ${t.n} reservas · ingreso total ${usd(t.ingreso)}<button class="link-danger" data-del-periodo="${periodo}">Borrar mes</button></div>
+    ${!conCosto ? `<div class="ing-banner">Cargá la cotización (1 USD = X ARS) arriba para restar el costo de limpieza y ver tu neto. Por ahora se muestra tu ganancia bruta.</div>` : ""}
     ${sinN ? `<div class="ing-banner">Hay ${sinN} anuncio${sinN !== 1 ? "s" : ""} sin asignar a un departamento. <button class="link-edit" data-ing-config>Asociar ahora →</button></div>` : ""}
+    ${conCosto ? `
+      <div class="ing-desglose">
+        <div class="ing-dl-row"><span>Tu ganancia bruta</span><span>${usd(t.vos)}</span></div>
+        <div class="ing-dl-row neg"><span>− Limpiezas (por depto)</span><span>${usd(t.costoLimpieza)}</span></div>
+        <div class="ing-dl-row neg"><span>− Viático y plus del mes</span><span>${usd(opUsd || 0)}</span></div>
+        <div class="ing-dl-row total"><span>Tu neto</span><span>${usd(netoFinal)}</span></div>
+      </div>` : ""}
     <div class="ing-tabla-wrap">
       <table class="ing-tabla">
-        <thead><tr><th>Departamento</th><th>Res.</th><th>Ganás vos</th><th>Al dueño</th></tr></thead>
+        <thead><tr><th>Departamento</th><th>Res.</th><th>${gananciaCol}</th><th>Al dueño</th></tr></thead>
         <tbody>${grupos.map(fila).join("")}</tbody>
       </table>
     </div>
-    <p class="ing-nota">Todavía no se resta el costo de limpieza que pagás a las chicas (próxima etapa). Los deptos co-anfitrión o propios no tienen pago a dueño.</p>
+    <p class="ing-nota">${conCosto ? `El "neto" por depto ya descuenta el costo de limpieza de ese depto (${usd(t.costoLimpieza)} en total). El viático y los plus del mes (${usd(opUsd || 0)}) se restan aparte porque son por día, no por depto. ` : ""}Los deptos co-anfitrión o propios no tienen pago a dueño.</p>
   `;
 }
 

@@ -37,6 +37,11 @@
     propioAirbnb: ["cañitas", "chacarita"],
     propioBooking: ["dorrego", "san benito"],
     limpiezaBooking: 30, // el export de Booking no trae limpieza; tarifa fija (USD)
+    // Para el neto (Fase 3): valor que se le paga a la chica por limpiar cada
+    // depto (ARS, de pay-config) y cotizacion ARS por USD. Con eso se resta el
+    // costo de limpieza de cada reserva. Sin cotizacion (0), el costo es 0.
+    valorDepto: {},
+    cotizacion: 0,
   };
 
   function num(v) {
@@ -141,7 +146,12 @@
         vos = saldo - dueno;
       }
     }
-    return { ...r, codigo, modalidad, ingreso: round2(ingreso), vos: round2(vos), dueno: round2(dueno) };
+    // Costo de limpieza de esta reserva (una limpieza por reserva): el valor del
+    // depto en ARS pasado a USD. Solo si el depto esta asociado y hay cotizacion.
+    const valorArs = codigo && cfg.valorDepto ? Number(cfg.valorDepto[codigo]) || 0 : 0;
+    const costoLimpieza = cfg.cotizacion > 0 ? round2(valorArs / cfg.cotizacion) : 0;
+    const neto = round2(vos - costoLimpieza);
+    return { ...r, codigo, modalidad, ingreso: round2(ingreso), vos: round2(vos), dueno: round2(dueno), costoLimpieza, neto };
   }
 
   function agrupar(reservas) {
@@ -149,18 +159,20 @@
     for (const r of reservas) {
       const key = r.codigo ? "depto:" + r.codigo : r.plataforma + "||" + r.unidad;
       if (!map.has(key)) {
-        map.set(key, { codigo: r.codigo || null, unidad: r.unidad, plataforma: r.plataforma, asociado: !!r.codigo, n: 0, ingreso: 0, vos: 0, dueno: 0, reservas: [] });
+        map.set(key, { codigo: r.codigo || null, unidad: r.unidad, plataforma: r.plataforma, asociado: !!r.codigo, n: 0, ingreso: 0, vos: 0, dueno: 0, costoLimpieza: 0, neto: 0, reservas: [] });
       }
       const g = map.get(key);
       g.n += 1;
       g.ingreso += r.ingreso;
       g.vos += r.vos;
       g.dueno += r.dueno;
+      g.costoLimpieza += r.costoLimpieza;
+      g.neto += r.neto;
       g.reservas.push(r);
       // si un depto junta Airbnb+Booking, marcamos plataforma mixta
       if (g.plataforma !== r.plataforma) g.plataforma = "mix";
     }
-    const out = Array.from(map.values()).map((g) => ({ ...g, ingreso: round2(g.ingreso), vos: round2(g.vos), dueno: round2(g.dueno) }));
+    const out = Array.from(map.values()).map((g) => ({ ...g, ingreso: round2(g.ingreso), vos: round2(g.vos), dueno: round2(g.dueno), costoLimpieza: round2(g.costoLimpieza), neto: round2(g.neto) }));
     out.sort((a, b) => b.vos - a.vos);
     return out;
   }
@@ -183,12 +195,14 @@
     const reservas = (reservasCrudas || []).map((r) => repartir(r, cfg));
     const grupos = agrupar(reservas);
     const totales = reservas.reduce(
-      (a, r) => { a.ingreso += r.ingreso; a.vos += r.vos; a.dueno += r.dueno; return a; },
-      { ingreso: 0, vos: 0, dueno: 0, n: reservas.length }
+      (a, r) => { a.ingreso += r.ingreso; a.vos += r.vos; a.dueno += r.dueno; a.costoLimpieza += r.costoLimpieza; a.neto += r.neto; return a; },
+      { ingreso: 0, vos: 0, dueno: 0, costoLimpieza: 0, neto: 0, n: reservas.length }
     );
     totales.ingreso = round2(totales.ingreso);
     totales.vos = round2(totales.vos);
     totales.dueno = round2(totales.dueno);
+    totales.costoLimpieza = round2(totales.costoLimpieza);
+    totales.neto = round2(totales.neto);
     const sinAsociar = grupos.filter((g) => !g.asociado);
     return { reservas, grupos, totales, sinAsociar, unidades: unidadesDetectadas(reservasCrudas || []) };
   }

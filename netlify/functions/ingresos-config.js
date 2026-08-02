@@ -7,7 +7,7 @@
 
 const { getJSON, setJSON } = require("../lib/store");
 
-const DEFAULT = { mapeo: {}, limpiezaBooking: 30 };
+const DEFAULT = { mapeo: {}, limpiezaBooking: 30, cotizacion: 0 };
 
 function json(code, obj) {
   return { statusCode: code, headers: { "Content-Type": "application/json" }, body: JSON.stringify(obj) };
@@ -29,6 +29,7 @@ exports.handler = async (event) => {
     const next = {
       mapeo: body.mapeo && typeof body.mapeo === "object" ? body.mapeo : prev.mapeo,
       limpiezaBooking: body.limpiezaBooking != null ? Number(body.limpiezaBooking) || 0 : prev.limpiezaBooking,
+      cotizacion: body.cotizacion != null ? Number(body.cotizacion) || 0 : prev.cotizacion || 0,
     };
     await setJSON("ingresos-config", next);
     return json(200, { ok: true, config: next });

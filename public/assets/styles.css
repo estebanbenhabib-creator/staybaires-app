@@ -457,3 +457,13 @@ main {
 .ing-cfg-depto { grid-area: depto; border: 1px solid var(--border); border-radius: var(--radius); padding: 8px 10px; font-size: 13px; background: var(--surface); max-width: 100%; }
 .ing-cfg-propio { grid-area: propio; display: inline-flex; align-items: center; gap: 5px; font-size: 13px; color: var(--text-secondary); white-space: nowrap; }
 .ing-cfg-actions { display: flex; gap: 8px; justify-content: flex-end; position: sticky; bottom: 8px; background: var(--bg); padding: 8px 0; }
+
+/* ---- Ingresos: cotización y desglose neto (Fase 3) ---- */
+.ing-cotiz { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 10px 0 4px; font-size: 13px; color: var(--text-secondary); }
+.ing-cotiz-lbl { font-weight: 600; }
+.ing-cotiz input { width: 110px; border: 1px solid var(--border); border-radius: var(--radius); padding: 7px 9px; font-size: 14px; background: var(--surface); }
+.ing-cotiz .btn-secondary { padding: 6px 12px; }
+.ing-desglose { border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 12px; margin: 12px 0; font-size: 14px; }
+.ing-dl-row { display: flex; justify-content: space-between; gap: 10px; padding: 4px 0; color: var(--text-secondary); }
+.ing-dl-row.neg { color: var(--coral-fg); }
+.ing-dl-row.total { border-top: 1px solid var(--border); margin-top: 4px; padding-top: 8px; font-weight: 800; font-size: 16px; color: #0f6e56; }
