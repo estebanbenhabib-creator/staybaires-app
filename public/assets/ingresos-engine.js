@@ -42,6 +42,10 @@
     // costo de limpieza de cada reserva. Sin cotizacion (0), el costo es 0.
     valorDepto: {},
     cotizacion: 0,
+    // Alquileres de larga estadia (renta fija mensual, no vienen de las
+    // plataformas). Cada uno: { codigo, tipo: "propio"|"comision",
+    // montoMensual, comisionPct, activo }. Se suman a cada mes.
+    rentasFijas: [],
   };
 
   function num(v) {
@@ -193,6 +197,35 @@
     const cfg = Object.assign({}, CONFIG_DEFAULT, cfgOverride || {});
     cfg.mapeo = (cfgOverride && cfgOverride.mapeo) || {};
     const reservas = (reservasCrudas || []).map((r) => repartir(r, cfg));
+    // Rentas fijas de larga estadia: se suman como una "reserva" mensual por
+    // depto. Propio -> gana el 100%; comision -> gana el % y el resto al dueño.
+    for (const f of cfg.rentasFijas || []) {
+      if (f.activo === false) continue;
+      const monto = Number(f.montoMensual) || 0;
+      if (!monto) continue;
+      let vos, dueno;
+      if (f.tipo === "comision") {
+        const pct = Number(f.comisionPct) || 0;
+        vos = round2((monto * pct) / 100);
+        dueno = round2(monto - vos);
+      } else {
+        vos = monto;
+        dueno = 0;
+      }
+      reservas.push({
+        plataforma: "larga",
+        codigo: f.codigo || null,
+        unidad: "Larga estadía",
+        modalidad: f.tipo === "comision" ? "larga_comision" : "larga_propio",
+        ingreso: monto,
+        limpieza: 0,
+        vos,
+        dueno,
+        costoLimpieza: 0,
+        neto: vos,
+        esFija: true,
+      });
+    }
     const grupos = agrupar(reservas);
     const totales = reservas.reduce(
       (a, r) => { a.ingreso += r.ingreso; a.vos += r.vos; a.dueno += r.dueno; a.costoLimpieza += r.costoLimpieza; a.neto += r.neto; return a; },

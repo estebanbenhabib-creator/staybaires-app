@@ -1623,7 +1623,7 @@ function ingresosResultadoHTML(calc, periodo, opUsd, cotizacion) {
   const gananciaCol = conCosto ? "Ganás (neto)" : "Ganás vos";
   const fila = (g) => `
     <tr class="${g.asociado ? "" : "ing-sin"}">
-      <td>${g.asociado ? `<b>${nombreDepto(g.codigo)}</b>` : `<span class="ing-plat ${g.plataforma}">${g.plataforma === "airbnb" ? "Airbnb" : "Booking"}</span> ${g.unidad} <span class="ing-tag">sin asignar</span>`}</td>
+      <td>${g.asociado ? `<b>${nombreDepto(g.codigo)}</b>${g.plataforma === "larga" ? ` <span class="ing-tag-larga">larga estadía</span>` : ""}` : `<span class="ing-plat ${g.plataforma}">${g.plataforma === "airbnb" ? "Airbnb" : "Booking"}</span> ${g.unidad} <span class="ing-tag">sin asignar</span>`}</td>
       <td class="num">${g.n}</td>
       <td class="num vos">${usd(conCosto ? g.neto : g.vos)}</td>
       <td class="num dueno">${g.dueno > 0 ? usd(g.dueno) : "—"}</td>
@@ -1666,6 +1666,19 @@ async function renderIngresosConfig(guardados, cfg) {
     `<option value="">— sin asignar —</option>` +
     props.map((p) => `<option value="${p.codigo}" ${p.codigo === sel ? "selected" : ""}>${p.direccion || p.nombre}</option>`).join("");
 
+  const fijas = cfg.rentasFijas || [];
+  const filaFijaHTML = (f) => `
+    <div class="ing-fija-row">
+      <select class="ing-fija-depto">${opciones(f.codigo || "")}</select>
+      <select class="ing-fija-tipo">
+        <option value="propio" ${f.tipo !== "comision" ? "selected" : ""}>Propio (100%)</option>
+        <option value="comision" ${f.tipo === "comision" ? "selected" : ""}>Comisión %</option>
+      </select>
+      <input class="ing-fija-monto" type="number" inputmode="numeric" placeholder="USD/mes" value="${f.montoMensual || ""}" />
+      <input class="ing-fija-pct" type="number" inputmode="numeric" placeholder="% com." value="${f.comisionPct || ""}" />
+      <button class="ing-fija-del" title="Quitar">✕</button>
+    </div>`;
+
   setMain(`
     <h1 class="ab-headline">Asociar anuncios a departamentos</h1>
     <div class="ab-sub">A cada anuncio de Airbnb / propiedad de Booking asignale su departamento. Marcá "Propio" si el depto es tuyo (te quedás el 100%, sin pago a dueño).</div>
@@ -1683,9 +1696,14 @@ async function renderIngresosConfig(guardados, cfg) {
         })
         .join("")}
     </div>
+    <h2 class="ing-cfg-h2">Alquileres de larga estadía</h2>
+    <div class="ab-sub">Rentas fijas mensuales (inquilino de largo plazo, no vienen de Airbnb/Booking). Se suman a cada mes. <b>Propio</b> = ganás el 100%; <b>Comisión</b> = ganás el % del alquiler y el resto va al dueño. Todo en USD.</div>
+    <div id="ing-fijas">${fijas.map(filaFijaHTML).join("")}</div>
+    <button class="link-edit" data-add-fija>+ Agregar larga estadía</button>
+
     <div class="ing-cfg-actions">
       <button class="btn-secondary" data-ing-volver>Volver</button>
-      <button class="btn-primary" data-ing-guardar>Guardar asociaciones</button>
+      <button class="btn-primary" data-ing-guardar>Guardar</button>
     </div>
   `);
 
@@ -1698,6 +1716,15 @@ async function renderIngresosConfig(guardados, cfg) {
     sel.onchange = () => { if (INGRESOS_PROPIOS.includes(sel.value)) chk.checked = true; };
   });
 
+  // Rentas fijas de larga estadía: agregar / quitar filas.
+  const bindDelFija = (row) => { row.querySelector(".ing-fija-del").onclick = () => row.remove(); };
+  document.querySelectorAll(".ing-fija-row").forEach(bindDelFija);
+  document.querySelector("[data-add-fija]").onclick = () => {
+    const cont = document.getElementById("ing-fijas");
+    cont.insertAdjacentHTML("beforeend", filaFijaHTML({}));
+    bindDelFija(cont.lastElementChild);
+  };
+
   document.querySelector("[data-ing-guardar]").onclick = async () => {
     const nuevoMapeo = {};
     document.querySelectorAll(".ing-cfg-row").forEach((row) => {
@@ -1705,10 +1732,23 @@ async function renderIngresosConfig(guardados, cfg) {
       const codigo = row.querySelector(".ing-cfg-depto").value;
       if (codigo) nuevoMapeo[unidad] = { codigo, propio: row.querySelector(".ing-cfg-chk").checked };
     });
+    const nuevasFijas = [];
+    document.querySelectorAll(".ing-fija-row").forEach((row) => {
+      const codigo = row.querySelector(".ing-fija-depto").value;
+      const monto = Number(row.querySelector(".ing-fija-monto").value) || 0;
+      if (!codigo || !monto) return;
+      nuevasFijas.push({
+        codigo,
+        tipo: row.querySelector(".ing-fija-tipo").value,
+        montoMensual: monto,
+        comisionPct: Number(row.querySelector(".ing-fija-pct").value) || 0,
+        activo: true,
+      });
+    });
     try {
-      await fetchJSON(`${API}/ingresos-config`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mapeo: nuevoMapeo }) });
+      await fetchJSON(`${API}/ingresos-config`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mapeo: nuevoMapeo, rentasFijas: nuevasFijas }) });
       INGRESOS_VIEW = "resumen";
-      toast("Asociaciones guardadas");
+      toast("Guardado");
       renderIngresos();
     } catch (err) {
       toast("No se pudo guardar: " + err.message);
