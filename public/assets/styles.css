@@ -478,3 +478,10 @@ main {
 .ing-fija-pct { grid-area: pct; }
 .ing-fija-row select, .ing-fija-row input { border: 1px solid var(--border); border-radius: var(--radius); padding: 8px 10px; font-size: 13px; background: var(--surface); width: 100%; box-sizing: border-box; }
 .ing-fija-del { grid-area: del; justify-self: end; border: none; background: none; color: var(--coral-fg); font-size: 15px; cursor: pointer; padding: 2px 8px; }
+
+/* ---- Ingresos: etiqueta de modalidad por depto ---- */
+.ing-mods { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 3px; }
+.ing-mod { display: inline-block; font-size: 10px; font-weight: 600; padding: 1px 6px; border-radius: 6px; background: #eef1f6; color: var(--text-secondary); white-space: nowrap; }
+.ing-mod-propio, .ing-mod-larga_propio { background: #e6f4ee; color: #0f6e56; }
+.ing-mod-larga_propio, .ing-mod-larga_comision { background: #efeafb; color: #6a4bb0; }
+.ing-mod-host_tercero { background: #fff1e6; color: #9a5312; }

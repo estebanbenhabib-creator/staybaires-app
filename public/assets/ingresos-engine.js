@@ -163,7 +163,7 @@
     for (const r of reservas) {
       const key = r.codigo ? "depto:" + r.codigo : r.plataforma + "||" + r.unidad;
       if (!map.has(key)) {
-        map.set(key, { codigo: r.codigo || null, unidad: r.unidad, plataforma: r.plataforma, asociado: !!r.codigo, n: 0, ingreso: 0, vos: 0, dueno: 0, costoLimpieza: 0, neto: 0, reservas: [] });
+        map.set(key, { codigo: r.codigo || null, unidad: r.unidad, plataforma: r.plataforma, asociado: !!r.codigo, n: 0, ingreso: 0, vos: 0, dueno: 0, costoLimpieza: 0, neto: 0, modalidades: [], reservas: [] });
       }
       const g = map.get(key);
       g.n += 1;
@@ -172,6 +172,8 @@
       g.dueno += r.dueno;
       g.costoLimpieza += r.costoLimpieza;
       g.neto += r.neto;
+      // modalidades presentes en el depto (unicas, en orden de aparicion)
+      if (r.modalidad && !g.modalidades.includes(r.modalidad)) g.modalidades.push(r.modalidad);
       g.reservas.push(r);
       // si un depto junta Airbnb+Booking, marcamos plataforma mixta
       if (g.plataforma !== r.plataforma) g.plataforma = "mix";

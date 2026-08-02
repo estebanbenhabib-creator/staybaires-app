@@ -1495,6 +1495,19 @@ function nombreDepto(codigo) {
   return p ? p.direccion || p.nombre : codigo;
 }
 
+// Etiqueta legible de cada modalidad de cobro (la que devuelve el motor).
+const MODALIDAD_LABEL = {
+  coanfitrion: "Co-anfitrión · 15% + limpieza",
+  host_tercero: "Host directo · 15% + 8%",
+  propio: "Propio · 100%",
+  tercero: "Booking · 15% + limpieza",
+  larga_propio: "Larga estadía · propio",
+  larga_comision: "Larga estadía · comisión",
+};
+function modalidadTag(m) {
+  return `<span class="ing-mod ing-mod-${m}">${MODALIDAD_LABEL[m] || m}</span>`;
+}
+
 async function renderIngresos() {
   try {
     const [guardados, cfg, payCfg] = await Promise.all([fetchJSON(`${API}/ingresos`), fetchJSON(`${API}/ingresos-config`), fetchJSON(`${API}/pay-config`)]);
@@ -1623,7 +1636,7 @@ function ingresosResultadoHTML(calc, periodo, opUsd, cotizacion) {
   const gananciaCol = conCosto ? "Ganás (neto)" : "Ganás vos";
   const fila = (g) => `
     <tr class="${g.asociado ? "" : "ing-sin"}">
-      <td>${g.asociado ? `<b>${nombreDepto(g.codigo)}</b>${g.plataforma === "larga" ? ` <span class="ing-tag-larga">larga estadía</span>` : ""}` : `<span class="ing-plat ${g.plataforma}">${g.plataforma === "airbnb" ? "Airbnb" : "Booking"}</span> ${g.unidad} <span class="ing-tag">sin asignar</span>`}</td>
+      <td>${g.asociado ? `<b>${nombreDepto(g.codigo)}</b><div class="ing-mods">${(g.modalidades || []).map(modalidadTag).join("")}</div>` : `<span class="ing-plat ${g.plataforma}">${g.plataforma === "airbnb" ? "Airbnb" : "Booking"}</span> ${g.unidad} <span class="ing-tag">sin asignar</span>`}</td>
       <td class="num">${g.n}</td>
       <td class="num vos">${usd(conCosto ? g.neto : g.vos)}</td>
       <td class="num dueno">${g.dueno > 0 ? usd(g.dueno) : "—"}</td>
