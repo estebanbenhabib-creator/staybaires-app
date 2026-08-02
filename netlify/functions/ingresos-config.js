@@ -15,7 +15,9 @@ function json(code, obj) {
 
 exports.handler = async (event) => {
   if (event.httpMethod === "GET") {
-    return json(200, await getJSON("ingresos-config", DEFAULT));
+    // Merge con DEFAULT para que los campos nuevos (ej. cotizacion) siempre
+    // esten, aunque el blob se haya guardado con una version anterior.
+    return json(200, { ...DEFAULT, ...(await getJSON("ingresos-config", {})) });
   }
 
   if (event.httpMethod === "POST") {
