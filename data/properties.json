@@ -218,5 +218,25 @@
     "icalAirbnb": "https://www.airbnb.com.ar/calendar/ical/54031856.ics?t=60f8f455bece4bd8acfb30e957d00adb",
     "icalBooking": null,
     "icalVrbo": null
+  },
+  {
+    "codigo": "1129",
+    "nombre": "Mariano Depto",
+    "barrio": "Chacarita",
+    "direccion": "Jorge Newbery 3993, piso 8 depto 16",
+    "tarifaLimpiezaUSD": 40,
+    "icalAirbnb": "https://www.airbnb.com.ar/calendar/ical/1740869392985139454.ics?t=12fe649a572a42e389ab09defd5f3a3d",
+    "icalBooking": null,
+    "icalVrbo": null
+  },
+  {
+    "codigo": "1130",
+    "nombre": "Noe Depto",
+    "barrio": "Palermo",
+    "direccion": "Sánchez de Bustamante 1052, piso 9 depto B",
+    "tarifaLimpiezaUSD": 40,
+    "icalAirbnb": "https://www.airbnb.com.ar/calendar/ical/1740834321434397252.ics?t=8bb476fb4a604201816e721f23c026dd",
+    "icalBooking": null,
+    "icalVrbo": null
   }
 ]
