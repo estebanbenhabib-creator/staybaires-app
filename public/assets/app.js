@@ -233,7 +233,7 @@ function renderApp() {
   app.innerHTML = `
     <div class="header">
       <div class="brand-logo" role="img" aria-label="StayBaires"></div>
-      <button class="who" data-logout>${SESSION.name} · ${roleConf.label} ⎋</button>
+      <button class="who" data-logout>${SESSION.role === "admin" ? `<img class="who-avatar" src="/avatars/esteban.jpg" alt="" onerror="this.remove()"/>` : ""}<span>${SESSION.name} · ${roleConf.label} ⎋</span></button>
     </div>
     <div class="screen-title-bar">
       <h1 id="screen-title">${TITLES[CURRENT_TAB]}</h1>

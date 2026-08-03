@@ -74,15 +74,26 @@ button {
   -webkit-mask: url(/logo-mark.svg) center / contain no-repeat;
   mask: url(/logo-mark.svg) center / contain no-repeat;
 }
-.header .brand-logo { height: 58px; }
+.header .brand-logo { height: 72px; }
 
 .header .who {
   font-size: 12px;
   color: rgba(255,255,255,0.8);
   background: rgba(255,255,255,0.12);
   padding: 4px 10px;
-  border-radius: var(--radius);
+  border-radius: 999px;
   border: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.who-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid rgba(255,255,255,0.55);
+  flex-shrink: 0;
 }
 
 .screen-title-bar {
