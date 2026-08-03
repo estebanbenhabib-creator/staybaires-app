@@ -1533,7 +1533,8 @@ async function renderIngresos() {
     // Al motor le sumamos el valor por depto (de Pagos) y la cotizacion para
     // que reste el costo de limpieza de cada reserva.
     // Extras de extensión del mes mostrado (se suman como ganancia 100% tuya).
-    const extrasMes = (extras || []).filter((e) => (e.fecha || "").slice(0, 7) === INGRESOS_MES).map((e) => ({ codigo: e.codigo, montoUsd: e.montoUsd }));
+    const extrasMesFull = (extras || []).filter((e) => (e.fecha || "").slice(0, 7) === INGRESOS_MES).sort((a, b) => (a.fecha || "").localeCompare(b.fecha || ""));
+    const extrasMes = extrasMesFull.map((e) => ({ codigo: e.codigo, montoUsd: e.montoUsd }));
     const cfgCalc = Object.assign({}, cfg, { valorDepto: payCfg.valorDepto || {}, extras: extrasMes });
     const calc = mes && mes.reservas && !formatoViejo ? IngresosEngine.computeIngresos(mes.reservas, cfgCalc) : null;
     // Viatico + plus + items del mes: costo operativo que se resta aparte (no se
@@ -1577,7 +1578,7 @@ async function renderIngresos() {
         <button class="btn-secondary" id="ing-cotiz-save">Guardar</button>
       </div>
 
-      <div id="ing-resultado">${formatoViejo ? `<div class="ing-banner">Este mes se importó con una versión anterior. Volvé a subir los archivos para verlo actualizado.</div>` : calc ? ingresosResultadoHTML(calc, INGRESOS_MES, opUsd, cfg.cotizacion) : `<div class="empty-state">Todavía no importaste ningún mes.</div>`}</div>
+      <div id="ing-resultado">${formatoViejo ? `<div class="ing-banner">Este mes se importó con una versión anterior. Volvé a subir los archivos para verlo actualizado.</div>` : calc ? ingresosResultadoHTML(calc, INGRESOS_MES, opUsd, cfg.cotizacion, extrasMesFull) : `<div class="empty-state">Todavía no importaste ningún mes.</div>`}</div>
     `);
 
     document.getElementById("ing-procesar").onclick = procesarImportIngresos;
@@ -1607,6 +1608,18 @@ async function renderIngresos() {
         toast("No se pudo borrar: " + err.message);
       }
     };
+    document.querySelectorAll("[data-del-extra]").forEach((b) => {
+      b.onclick = async () => {
+        if (!confirm("¿Borrar este cobro de extensión?")) return;
+        try {
+          await fetchJSON(`${API}/ingresos-extra`, { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: b.getAttribute("data-del-extra") }) });
+          toast("Extensión borrada");
+          renderIngresos();
+        } catch (err) {
+          toast("No se pudo borrar: " + err.message);
+        }
+      };
+    });
   } catch (err) {
     setMain(`<div class="empty-state">No se pudo cargar Ingresos.<br>${err.message}</div>`);
   }
@@ -1639,7 +1652,7 @@ async function procesarImportIngresos() {
   }
 }
 
-function ingresosResultadoHTML(calc, periodo, opUsd, cotizacion) {
+function ingresosResultadoHTML(calc, periodo, opUsd, cotizacion, extrasMes) {
   const t = calc.totales;
   const grupos = calc.grupos;
   const sinN = calc.sinAsociar.length;
@@ -1675,6 +1688,16 @@ function ingresosResultadoHTML(calc, periodo, opUsd, cotizacion) {
         <tbody>${grupos.map(fila).join("")}</tbody>
       </table>
     </div>
+    ${(extrasMes || []).length ? `
+      <p class="ab-section ing-ext-h">Extensiones cobradas por fuera</p>
+      <div class="ing-ext-list">
+        ${extrasMes.map((e) => `
+          <div class="ing-ext-row">
+            <div class="ing-ext-info"><b>${nombreDepto(e.codigo)}</b><span class="ing-ext-fecha">${fmtDate(e.fecha)}</span></div>
+            <div class="ing-ext-monto">${usd(e.montoUsd)}</div>
+            <button class="ing-ext-del" data-del-extra="${e.id}" title="Borrar">✕</button>
+          </div>`).join("")}
+      </div>` : ""}
     <p class="ing-nota">${conCosto ? `El "neto" por depto ya descuenta el costo de limpieza de ese depto (${usd(t.costoLimpieza)} en total). El viático y los plus del mes (${usd(opUsd || 0)}) se restan aparte porque son por día, no por depto. ` : ""}Los deptos co-anfitrión o propios no tienen pago a dueño.</p>
   `;
 }
