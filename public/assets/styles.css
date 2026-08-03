@@ -49,7 +49,7 @@ button {
 .header {
   background: var(--navy);
   color: #fff;
-  padding: 14px 16px;
+  padding: 10px 16px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -74,7 +74,7 @@ button {
   -webkit-mask: url(/logo-mark.svg) center / contain no-repeat;
   mask: url(/logo-mark.svg) center / contain no-repeat;
 }
-.header .brand-logo { height: 30px; }
+.header .brand-logo { height: 58px; }
 
 .header .who {
   font-size: 12px;
