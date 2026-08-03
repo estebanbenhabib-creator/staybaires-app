@@ -228,6 +228,26 @@
         esFija: true,
       });
     }
+    // Extras por extension de estadia (cobrados por fuera de las plataformas):
+    // 100% ganancia de Esteban, sin dueño ni costo de limpieza. Se pasan ya
+    // filtrados por mes.
+    for (const e of cfg.extras || []) {
+      const monto = Number(e.montoUsd) || 0;
+      if (!monto) continue;
+      reservas.push({
+        plataforma: "extra",
+        codigo: e.codigo || null,
+        unidad: "Extensión",
+        modalidad: "extension",
+        ingreso: monto,
+        limpieza: 0,
+        vos: monto,
+        dueno: 0,
+        costoLimpieza: 0,
+        neto: monto,
+        esExtra: true,
+      });
+    }
     const grupos = agrupar(reservas);
     const totales = reservas.reduce(
       (a, r) => { a.ingreso += r.ingreso; a.vos += r.vos; a.dueno += r.dueno; a.costoLimpieza += r.costoLimpieza; a.neto += r.neto; return a; },

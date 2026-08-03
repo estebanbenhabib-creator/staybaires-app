@@ -485,3 +485,6 @@ main {
 .ing-mod-propio, .ing-mod-larga_propio { background: #e6f4ee; color: #0f6e56; }
 .ing-mod-larga_propio, .ing-mod-larga_comision { background: #efeafb; color: #6a4bb0; }
 .ing-mod-host_tercero { background: #fff1e6; color: #9a5312; }
+
+.cf-hint { font-size: 12px; color: var(--text-muted); margin-top: 6px; line-height: 1.35; }
+.ing-mod-extension { background: #fdeaf1; color: #b03a6a; }

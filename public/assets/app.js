@@ -1042,6 +1042,9 @@ function openCambiarFechaForm(id, fechaActual, onDone) {
       </div>
       <label>Nueva fecha</label>
       <input type="date" id="cf-fecha" value="${fechaActual}" />
+      <label>Cobré por la extensión (USD, opcional)</label>
+      <input type="number" inputmode="numeric" id="cf-extra" placeholder="0" />
+      <div class="cf-hint">Se suma 100% a tus ganancias de ese depto, en el mes de la nueva fecha.</div>
       <div class="modal-actions">
         <button class="btn-secondary" id="cf-cancel">Cancelar</button>
         <button class="btn-primary" id="cf-save">Guardar</button>
@@ -1062,11 +1065,18 @@ function openCambiarFechaForm(id, fechaActual, onDone) {
   overlay.querySelector("#cf-save").onclick = async () => {
     const fecha = overlay.querySelector("#cf-fecha").value;
     if (!fecha) return toast("Elegí una fecha");
+    const extra = Number(overlay.querySelector("#cf-extra").value) || 0;
     try {
       await fetchJSON(`${API}/tasks`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, fecha }) });
+      // Cobro de la extension (por fuera de la plataforma) -> Ingresos. El id de
+      // un check-out es "codigo_fecha", asi que el depto es lo de antes del "_".
+      if (extra > 0) {
+        const codigo = String(id).split("_")[0];
+        await fetchJSON(`${API}/ingresos-extra`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ codigo, fecha, montoUsd: extra, taskId: id, nota: "Extensión de estadía" }) });
+      }
       CACHE.tasksPayload = null;
       close();
-      toast("Limpieza movida al " + fmtDate(fecha));
+      toast(extra > 0 ? `Movida al ${fmtDate(fecha)} · +US$${extra} a Ingresos` : "Limpieza movida al " + fmtDate(fecha));
       onDone();
     } catch (err) {
       toast("No se pudo cambiar: " + err.message);
@@ -1503,6 +1513,7 @@ const MODALIDAD_LABEL = {
   tercero: "Booking · 15% + limpieza",
   larga_propio: "Larga estadía · propio",
   larga_comision: "Larga estadía · comisión",
+  extension: "Extensión · fuera de plataforma",
 };
 function modalidadTag(m) {
   return `<span class="ing-mod ing-mod-${m}">${MODALIDAD_LABEL[m] || m}</span>`;
@@ -1510,7 +1521,7 @@ function modalidadTag(m) {
 
 async function renderIngresos() {
   try {
-    const [guardados, cfg, payCfg] = await Promise.all([fetchJSON(`${API}/ingresos`), fetchJSON(`${API}/ingresos-config`), fetchJSON(`${API}/pay-config`)]);
+    const [guardados, cfg, payCfg, extras] = await Promise.all([fetchJSON(`${API}/ingresos`), fetchJSON(`${API}/ingresos-config`), fetchJSON(`${API}/pay-config`), fetchJSON(`${API}/ingresos-extra`)]);
     if (INGRESOS_VIEW === "config") return renderIngresosConfig(guardados, cfg);
 
     const periodos = Object.keys(guardados).sort().reverse();
@@ -1521,7 +1532,9 @@ async function renderIngresos() {
     const formatoViejo = mes && mes.reservas && mes.reservas.length && !mes.reservas.some((r) => r.tipoAirbnb !== undefined || r.total !== undefined);
     // Al motor le sumamos el valor por depto (de Pagos) y la cotizacion para
     // que reste el costo de limpieza de cada reserva.
-    const cfgCalc = Object.assign({}, cfg, { valorDepto: payCfg.valorDepto || {} });
+    // Extras de extensión del mes mostrado (se suman como ganancia 100% tuya).
+    const extrasMes = (extras || []).filter((e) => (e.fecha || "").slice(0, 7) === INGRESOS_MES).map((e) => ({ codigo: e.codigo, montoUsd: e.montoUsd }));
+    const cfgCalc = Object.assign({}, cfg, { valorDepto: payCfg.valorDepto || {}, extras: extrasMes });
     const calc = mes && mes.reservas && !formatoViejo ? IngresosEngine.computeIngresos(mes.reservas, cfgCalc) : null;
     // Viatico + plus + items del mes: costo operativo que se resta aparte (no se
     // atribuye por depto). Sale de la liquidacion de Pagos de ese mes.
