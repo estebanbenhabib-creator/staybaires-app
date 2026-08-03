@@ -66,6 +66,16 @@ button {
 
 .brand .blue { color: var(--blue); }
 
+/* Logo StayBaires (isotipo + wordmark) como mascara -> se recolorea por contexto:
+   blanco en el header navy, navy en el login claro. */
+.brand-logo {
+  aspect-ratio: 145.13 / 62.97;
+  background-color: #fff;
+  -webkit-mask: url(/logo-mark.svg) center / contain no-repeat;
+  mask: url(/logo-mark.svg) center / contain no-repeat;
+}
+.header .brand-logo { height: 30px; }
+
 .header .who {
   font-size: 12px;
   color: rgba(255,255,255,0.8);
@@ -321,7 +331,7 @@ main {
   text-align: center;
 }
 
-.login-wrap .brand { color: var(--navy); font-size: 22px; }
+.login-wrap .brand-logo { height: 52px; background-color: var(--navy); }
 
 .role-card {
   width: 100%;

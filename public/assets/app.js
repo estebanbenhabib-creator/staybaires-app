@@ -143,7 +143,7 @@ function renderLogin() {
 
   app.innerHTML = `
     <div class="login-wrap">
-      <div class="brand">STAY<span class="blue">BAIRES</span></div>
+      <div class="brand-logo" role="img" aria-label="StayBaires"></div>
       <p class="muted">Elegi con que perfil entras</p>
 
       ${admin ? `<div class="role-card"><h3>Admin</h3>${loginEntryHTML(admin)}</div>` : ""}
@@ -232,7 +232,7 @@ function renderApp() {
 
   app.innerHTML = `
     <div class="header">
-      <div class="brand">STAY<span class="blue">BAIRES</span></div>
+      <div class="brand-logo" role="img" aria-label="StayBaires"></div>
       <button class="who" data-logout>${SESSION.name} · ${roleConf.label} ⎋</button>
     </div>
     <div class="screen-title-bar">
