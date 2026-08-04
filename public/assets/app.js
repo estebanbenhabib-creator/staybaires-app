@@ -1505,6 +1505,55 @@ function nombreDepto(codigo) {
   return p ? p.direccion || p.nombre : codigo;
 }
 
+// Nombre del propietario, derivado del nombre del depto ("Luchi Depto" -> "Luchi").
+function nombrePropietario(codigo) {
+  const p = (CONFIG.properties || []).find((x) => x.codigo === codigo);
+  if (!p) return codigo;
+  return (p.nombre || "").replace(/\s*depto.*$/i, "").trim() || p.nombre || codigo;
+}
+
+// Documento imprimible: un comprobante por propietario (con logo) con el detalle
+// del pago del mes (solo lo que Esteban le gira: dueno > 0).
+function abrirComprobantes(calc, periodo) {
+  const porProp = {};
+  for (const g of calc.grupos || []) {
+    if (!g.asociado || g.dueno <= 0) continue;
+    const prop = nombrePropietario(g.codigo);
+    (porProp[prop] = porProp[prop] || []).push(g);
+  }
+  const props = Object.keys(porProp).sort();
+  if (!props.length) return toast("No hay pagos a propietarios este mes");
+  const hoy = new Date().toLocaleDateString("es-AR");
+  const comprobante = (prop, grupos) => {
+    const total = Math.round(grupos.reduce((s, g) => s + g.dueno, 0) * 100) / 100;
+    return `
+      <div class="comprobante">
+        <div class="cmp-logo" role="img" aria-label="StayBaires"></div>
+        <div class="cmp-title">Liquidación a propietario</div>
+        <div class="cmp-mes">${fmtMesLargo(periodo)}</div>
+        <div class="cmp-prop">Propietario: <b>${prop}</b></div>
+        <table class="cmp-tabla">
+          <thead><tr><th>Departamento</th><th>Ingreso</th><th>A transferir</th></tr></thead>
+          <tbody>${grupos.map((g) => `<tr><td>${nombreDepto(g.codigo)}</td><td>${usd(g.ingreso)}</td><td>${usd(g.dueno)}</td></tr>`).join("")}</tbody>
+          <tfoot><tr><td colspan="2">Total a transferir</td><td>${usd(total)}</td></tr></tfoot>
+        </table>
+        <div class="cmp-footer">StayBaires · Alquileres Temporarios<br>contact@staybaires.com · staybaires.com<br>Generado el ${hoy}</div>
+      </div>`;
+  };
+  const overlay = document.createElement("div");
+  overlay.className = "cmp-overlay";
+  overlay.innerHTML = `
+    <div class="cmp-bar no-print">
+      <button class="btn-secondary" id="cmp-cerrar">Cerrar</button>
+      <span>${props.length} comprobante${props.length !== 1 ? "s" : ""}</span>
+      <button class="btn-primary" id="cmp-print">Imprimir / PDF</button>
+    </div>
+    <div class="print-area">${props.map((p) => comprobante(p, porProp[p])).join("")}</div>`;
+  document.body.appendChild(overlay);
+  overlay.querySelector("#cmp-cerrar").onclick = () => overlay.remove();
+  overlay.querySelector("#cmp-print").onclick = () => window.print();
+}
+
 // Etiqueta legible de cada modalidad de cobro (la que devuelve el motor).
 const MODALIDAD_LABEL = {
   coanfitrion: "Co-anfitrión · 15% + limpieza",
@@ -1639,6 +1688,8 @@ async function renderIngresos() {
         }
       };
     });
+    const cmpBtn = document.querySelector("[data-comprobantes]");
+    if (cmpBtn) cmpBtn.onclick = () => abrirComprobantes(calc, INGRESOS_MES);
   } catch (err) {
     setMain(`<div class="empty-state">No se pudo cargar Ingresos.<br>${err.message}</div>`);
   }
@@ -1708,6 +1759,7 @@ function ingresosResultadoHTML(calc, periodo, opUsd, cotizacion, extrasMes, lavU
         <tbody>${grupos.map(fila).join("")}</tbody>
       </table>
     </div>
+    ${grupos.some((g) => g.asociado && g.dueno > 0) ? `<button class="btn-secondary ing-cmp-btn" data-comprobantes>Comprobantes a propietarios (PDF)</button>` : ""}
     ${(extrasMes || []).length ? `
       <p class="ab-section ing-ext-h">Extensiones cobradas por fuera</p>
       <div class="ing-ext-list">
