@@ -1521,7 +1521,7 @@ function modalidadTag(m) {
 
 async function renderIngresos() {
   try {
-    const [guardados, cfg, payCfg, extras, lavanderia] = await Promise.all([fetchJSON(`${API}/ingresos`), fetchJSON(`${API}/ingresos-config`), fetchJSON(`${API}/pay-config`), fetchJSON(`${API}/ingresos-extra`), fetchJSON(`${API}/ingresos-lavanderia`)]);
+    const [guardados, cfg, payCfg, extras, ingresosMes] = await Promise.all([fetchJSON(`${API}/ingresos`), fetchJSON(`${API}/ingresos-config`), fetchJSON(`${API}/pay-config`), fetchJSON(`${API}/ingresos-extra`), fetchJSON(`${API}/ingresos-mes`)]);
     if (INGRESOS_VIEW === "config") return renderIngresosConfig(guardados, cfg);
 
     const periodos = Object.keys(guardados).sort().reverse();
@@ -1530,28 +1530,30 @@ async function renderIngresos() {
     // Un mes importado con Fase 1 guardaba las reservas ya calculadas (sin los
     // campos crudos). Si es asi, pedimos re-importar en vez de mostrar basura.
     const formatoViejo = mes && mes.reservas && mes.reservas.length && !mes.reservas.some((r) => r.tipoAirbnb !== undefined || r.total !== undefined);
-    // Al motor le sumamos el valor por depto (de Pagos) y la cotizacion para
-    // que reste el costo de limpieza de cada reserva.
     // Extras de extensión del mes mostrado (se suman como ganancia 100% tuya).
     const extrasMesFull = (extras || []).filter((e) => (e.fecha || "").slice(0, 7) === INGRESOS_MES).sort((a, b) => (a.fecha || "").localeCompare(b.fecha || ""));
     const extrasMes = extrasMesFull.map((e) => ({ codigo: e.codigo, montoUsd: e.montoUsd }));
-    const cfgCalc = Object.assign({}, cfg, { valorDepto: payCfg.valorDepto || {}, extras: extrasMes });
-    const calc = mes && mes.reservas && !formatoViejo ? IngresosEngine.computeIngresos(mes.reservas, cfgCalc) : null;
-    // Viatico + plus + items del mes: costo operativo que se resta aparte (no se
-    // atribuye por depto). Sale de la liquidacion de Pagos de ese mes.
-    let opArs = 0;
-    if (calc && cfg.cotizacion > 0 && INGRESOS_MES) {
+    // Datos congelados del mes: cotización (ARS/USD), viático y lavandería (ARS).
+    const mesData = (ingresosMes || {})[INGRESOS_MES] || {};
+    const cotizacion = Number(mesData.cotizacion) || 0;
+    const lavArs = Number(mesData.lavanderia) || 0;
+    // Viático del mes: el guardado; si el mes nunca se guardó, se sugiere el de
+    // Pagos de ese rango (sirve para el mes en curso; en meses viejos da 0).
+    let viaticoArs = Number(mesData.viatico) || 0;
+    let viaticoSugerido = false;
+    if (!mesData.viatico && INGRESOS_MES) {
       const [y, m] = INGRESOS_MES.split("-").map(Number);
       const ult = String(new Date(y, m, 0).getDate()).padStart(2, "0");
       try {
         const liq = await fetchJSON(`${API}/payments?from=${INGRESOS_MES}-01&to=${INGRESOS_MES}-${ult}`);
-        opArs = (liq.summary || []).reduce((s, e) => s + (e.viatico || 0) + (e.plusDomingo || 0) + (e.plusFeriado || 0) + (e.itemsTotal || 0), 0);
+        viaticoArs = (liq.summary || []).reduce((s, e) => s + (e.viatico || 0) + (e.plusDomingo || 0) + (e.plusFeriado || 0) + (e.itemsTotal || 0), 0);
+        viaticoSugerido = viaticoArs > 0;
       } catch (e) {}
     }
-    const opUsd = cfg.cotizacion > 0 ? Math.round((opArs / cfg.cotizacion) * 100) / 100 : 0;
-    // Lavandería del mes (pago a Luján, ARS): otro costo operativo que se resta.
-    const lavArs = Number((lavanderia || {})[INGRESOS_MES]) || 0;
-    const lavUsd = cfg.cotizacion > 0 ? Math.round((lavArs / cfg.cotizacion) * 100) / 100 : 0;
+    const cfgCalc = Object.assign({}, cfg, { valorDepto: payCfg.valorDepto || {}, extras: extrasMes, cotizacion });
+    const calc = mes && mes.reservas && !formatoViejo ? IngresosEngine.computeIngresos(mes.reservas, cfgCalc) : null;
+    const opUsd = cotizacion > 0 ? Math.round((viaticoArs / cotizacion) * 100) / 100 : 0;
+    const lavUsd = cotizacion > 0 ? Math.round((lavArs / cotizacion) * 100) / 100 : 0;
 
     setMain(`
       <h1 class="ab-headline">Ingresos por departamento</h1>
@@ -1574,38 +1576,36 @@ async function renderIngresos() {
         <button class="link-edit" data-ing-config>⚙️ Asociar deptos</button>
       </div>
 
-      <div class="ing-cotiz">
-        <span class="ing-cotiz-lbl">Cotización · 1 USD =</span>
-        <input type="number" inputmode="numeric" id="ing-cotiz" value="${cfg.cotizacion || ""}" placeholder="ARS" />
-        <span>ARS</span>
-        <button class="btn-secondary" id="ing-cotiz-save">Guardar</button>
-      </div>
-      ${INGRESOS_MES ? `<div class="ing-cotiz">
-        <span class="ing-cotiz-lbl">Lavandería ${fmtMesLargo(INGRESOS_MES)} (ARS)</span>
+      ${INGRESOS_MES ? `<div class="card ing-mes-card">
+        <p class="card-title">Datos de ${fmtMesLargo(INGRESOS_MES)}</p>
+        <div class="ab-sub" style="margin:0 0 8px;">Cada mes se cierra con su propia cotización y sus costos. Quedan guardados y no se pisan.</div>
+        <label class="ing-lbl">Cotización · 1 USD = (ARS)</label>
+        <input type="number" inputmode="numeric" id="ing-cotiz" value="${cotizacion || ""}" placeholder="ARS del mes" />
+        <label class="ing-lbl">Viático + plus del mes (ARS)${viaticoSugerido ? " · sugerido de Pagos" : ""}</label>
+        <input type="number" inputmode="numeric" id="ing-viatico" value="${viaticoArs || ""}" placeholder="ARS" />
+        <label class="ing-lbl">Lavandería del mes (ARS)</label>
         <input type="number" inputmode="numeric" id="ing-lav" value="${lavArs || ""}" placeholder="ARS" />
-        <button class="btn-secondary" id="ing-lav-save">Guardar</button>
+        <button class="btn-primary" id="ing-mes-save" style="margin-top:12px;">Guardar mes</button>
       </div>` : ""}
 
-      <div id="ing-resultado">${formatoViejo ? `<div class="ing-banner">Este mes se importó con una versión anterior. Volvé a subir los archivos para verlo actualizado.</div>` : calc ? ingresosResultadoHTML(calc, INGRESOS_MES, opUsd, cfg.cotizacion, extrasMesFull, lavUsd) : `<div class="empty-state">Todavía no importaste ningún mes.</div>`}</div>
+      <div id="ing-resultado">${formatoViejo ? `<div class="ing-banner">Este mes se importó con una versión anterior. Volvé a subir los archivos para verlo actualizado.</div>` : calc ? ingresosResultadoHTML(calc, INGRESOS_MES, opUsd, cotizacion, extrasMesFull, lavUsd) : `<div class="empty-state">Todavía no importaste ningún mes.</div>`}</div>
     `);
 
     document.getElementById("ing-procesar").onclick = procesarImportIngresos;
-    document.getElementById("ing-cotiz-save").onclick = async () => {
-      const v = Number(document.getElementById("ing-cotiz").value) || 0;
+    const mesBtn = document.getElementById("ing-mes-save");
+    if (mesBtn) mesBtn.onclick = async () => {
       try {
-        await fetchJSON(`${API}/ingresos-config`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mapeo: cfg.mapeo || {}, limpiezaBooking: cfg.limpiezaBooking, cotizacion: v }) });
-        toast("Cotización guardada");
-        renderIngresos();
-      } catch (err) {
-        toast("No se pudo guardar: " + err.message);
-      }
-    };
-    const lavBtn = document.getElementById("ing-lav-save");
-    if (lavBtn) lavBtn.onclick = async () => {
-      const v = Number(document.getElementById("ing-lav").value) || 0;
-      try {
-        await fetchJSON(`${API}/ingresos-lavanderia`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ periodo: INGRESOS_MES, montoArs: v }) });
-        toast("Lavandería guardada");
+        await fetchJSON(`${API}/ingresos-mes`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            periodo: INGRESOS_MES,
+            cotizacion: Number(document.getElementById("ing-cotiz").value) || 0,
+            viatico: Number(document.getElementById("ing-viatico").value) || 0,
+            lavanderia: Number(document.getElementById("ing-lav").value) || 0,
+          }),
+        });
+        toast(`${fmtMesLargo(INGRESOS_MES)} guardado`);
         renderIngresos();
       } catch (err) {
         toast("No se pudo guardar: " + err.message);
