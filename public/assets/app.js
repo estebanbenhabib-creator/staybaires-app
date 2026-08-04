@@ -1505,6 +1505,13 @@ function nombreDepto(codigo) {
   return p ? p.direccion || p.nombre : codigo;
 }
 
+// Nombre del propietario, derivado del nombre del depto ("Luchi Depto" -> "Luchi").
+function nombrePropietario(codigo) {
+  const p = (CONFIG.properties || []).find((x) => x.codigo === codigo);
+  if (!p) return codigo;
+  return (p.nombre || "").replace(/\s*depto.*$/i, "").trim() || p.nombre || codigo;
+}
+
 // Etiqueta legible de cada modalidad de cobro (la que devuelve el motor).
 const MODALIDAD_LABEL = {
   coanfitrion: "Co-anfitrión · 15% + limpieza",
@@ -1718,7 +1725,24 @@ function ingresosResultadoHTML(calc, periodo, opUsd, cotizacion, extrasMes, lavU
             <button class="ing-ext-del" data-del-extra="${e.id}" title="Borrar">✕</button>
           </div>`).join("")}
       </div>` : ""}
-    <p class="ing-nota">${conCosto ? `El "neto" por depto ya descuenta el costo de limpieza de ese depto (${usd(t.costoLimpieza)} en total). El viático y los plus del mes (${usd(opUsd || 0)}) se restan aparte porque son por día, no por depto. ` : ""}Los deptos co-anfitrión o propios no tienen pago a dueño.</p>
+    ${(() => {
+      const pg = grupos.filter((g) => g.asociado && g.duenoSaca > 0);
+      if (!pg.length) return "";
+      const tot = Math.round(pg.reduce((s, g) => s + g.duenoSaca, 0) * 100) / 100;
+      return `
+        <p class="ab-section ing-ext-h">Lo que saca cada propietario</p>
+        <div class="ing-tabla-wrap">
+          <table class="ing-tabla">
+            <thead><tr><th>Departamento</th><th>Propietario</th><th>Saca</th></tr></thead>
+            <tbody>
+              ${pg.map((g) => `<tr><td>${nombreDepto(g.codigo)}${g.modalidades.includes("coanfitrion") ? ` <span class="ing-tag-larga">calc. 85%</span>` : ""}</td><td>${nombrePropietario(g.codigo)}</td><td class="num dueno">${usd(g.duenoSaca)}</td></tr>`).join("")}
+              <tr class="ing-total-row"><td colspan="2">Total a propietarios</td><td class="num">${usd(tot)}</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="ing-nota">En los deptos co-anfitrión (marcados “calc. 85%”) Airbnb le paga al dueño directo; el monto es estimado como el 85% del alojamiento (vos cobrás el 15%). En el resto es lo que le girás vos.</p>`;
+    })()}
+    <p class="ing-nota">${conCosto ? `El "neto" por depto ya descuenta el costo de limpieza de ese depto (${usd(t.costoLimpieza)} en total). El viático y los plus del mes (${usd(opUsd || 0)}) se restan aparte porque son por día, no por depto. ` : ""}Los deptos propios no tienen pago a dueño.</p>
   `;
 }
 

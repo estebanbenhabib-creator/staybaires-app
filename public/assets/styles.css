@@ -523,3 +523,5 @@ main {
 .ing-mes-card { margin-top: 16px; }
 .ing-mes-card input { width: 100%; box-sizing: border-box; border: 1px solid var(--border); border-radius: var(--radius); padding: 9px 10px; font-size: 14px; background: var(--surface); }
 .ing-mes-card .btn-primary { width: 100%; }
+
+.ing-total-row td { font-weight: 700; border-top: 2px solid var(--border); color: var(--navy); }
