@@ -156,9 +156,13 @@
     const costoLimpieza = cfg.cotizacion > 0 ? round2(valorArs / cfg.cotizacion) : 0;
     const neto = round2(vos - costoLimpieza);
     // Lo que SACA el propietario (no lo que Esteban le gira). En co-anfitrión
-    // Airbnb le paga al dueño directo: si Esteban cobra el 15%, el dueño saca el
-    // 85%, o sea la parte de Esteban * 85/15. En el resto es lo mismo que "dueno".
-    const duenoSaca = r.plataforma === "airbnb" && r.tipoAirbnb === "coanfitrion" ? round2((r.deposito * 85) / 15) : round2(dueno);
+    // Airbnb le paga al dueño directo: lo que le liquida a Esteban es su 15% MAS
+    // la tarifa de limpieza, así que primero se saca la limpieza y de esa
+    // comisión pura se calcula el 85% del dueño: (deposito - limpieza) * 85/15.
+    // El reporte pone la limpieza en 0 para co-anfitrión, así que usamos la
+    // tarifa fija (la de Booking). En el resto es lo mismo que "dueno".
+    const limpiezaCoanf = r.limpieza || cfg.limpiezaBooking;
+    const duenoSaca = r.plataforma === "airbnb" && r.tipoAirbnb === "coanfitrion" ? round2(((r.deposito - limpiezaCoanf) * 85) / 15) : round2(dueno);
     return { ...r, codigo, modalidad, ingreso: round2(ingreso), vos: round2(vos), dueno: round2(dueno), duenoSaca, costoLimpieza, neto };
   }
 
