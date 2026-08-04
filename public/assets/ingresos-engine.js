@@ -155,15 +155,7 @@
     const valorArs = codigo && cfg.valorDepto ? Number(cfg.valorDepto[codigo]) || 0 : 0;
     const costoLimpieza = cfg.cotizacion > 0 ? round2(valorArs / cfg.cotizacion) : 0;
     const neto = round2(vos - costoLimpieza);
-    // Lo que SACA el propietario (no lo que Esteban le gira). En co-anfitrión
-    // Airbnb le paga al dueño directo: lo que le liquida a Esteban es su 15% MAS
-    // la tarifa de limpieza, así que primero se saca la limpieza y de esa
-    // comisión pura se calcula el 85% del dueño: (deposito - limpieza) * 85/15.
-    // El reporte pone la limpieza en 0 para co-anfitrión, así que usamos la
-    // tarifa fija (la de Booking). En el resto es lo mismo que "dueno".
-    const limpiezaCoanf = r.limpieza || cfg.limpiezaBooking;
-    const duenoSaca = r.plataforma === "airbnb" && r.tipoAirbnb === "coanfitrion" ? round2(((r.deposito - limpiezaCoanf) * 85) / 15) : round2(dueno);
-    return { ...r, codigo, modalidad, ingreso: round2(ingreso), vos: round2(vos), dueno: round2(dueno), duenoSaca, costoLimpieza, neto };
+    return { ...r, codigo, modalidad, ingreso: round2(ingreso), vos: round2(vos), dueno: round2(dueno), costoLimpieza, neto };
   }
 
   function agrupar(reservas) {
@@ -171,14 +163,13 @@
     for (const r of reservas) {
       const key = r.codigo ? "depto:" + r.codigo : r.plataforma + "||" + r.unidad;
       if (!map.has(key)) {
-        map.set(key, { codigo: r.codigo || null, unidad: r.unidad, plataforma: r.plataforma, asociado: !!r.codigo, n: 0, ingreso: 0, vos: 0, dueno: 0, duenoSaca: 0, costoLimpieza: 0, neto: 0, modalidades: [], reservas: [] });
+        map.set(key, { codigo: r.codigo || null, unidad: r.unidad, plataforma: r.plataforma, asociado: !!r.codigo, n: 0, ingreso: 0, vos: 0, dueno: 0, costoLimpieza: 0, neto: 0, modalidades: [], reservas: [] });
       }
       const g = map.get(key);
       g.n += 1;
       g.ingreso += r.ingreso;
       g.vos += r.vos;
       g.dueno += r.dueno;
-      g.duenoSaca += r.duenoSaca;
       g.costoLimpieza += r.costoLimpieza;
       g.neto += r.neto;
       // modalidades presentes en el depto (unicas, en orden de aparicion)
@@ -187,7 +178,7 @@
       // si un depto junta Airbnb+Booking, marcamos plataforma mixta
       if (g.plataforma !== r.plataforma) g.plataforma = "mix";
     }
-    const out = Array.from(map.values()).map((g) => ({ ...g, ingreso: round2(g.ingreso), vos: round2(g.vos), dueno: round2(g.dueno), duenoSaca: round2(g.duenoSaca), costoLimpieza: round2(g.costoLimpieza), neto: round2(g.neto) }));
+    const out = Array.from(map.values()).map((g) => ({ ...g, ingreso: round2(g.ingreso), vos: round2(g.vos), dueno: round2(g.dueno), costoLimpieza: round2(g.costoLimpieza), neto: round2(g.neto) }));
     out.sort((a, b) => b.vos - a.vos);
     return out;
   }
