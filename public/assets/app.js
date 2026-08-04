@@ -1521,7 +1521,7 @@ function modalidadTag(m) {
 
 async function renderIngresos() {
   try {
-    const [guardados, cfg, payCfg, extras] = await Promise.all([fetchJSON(`${API}/ingresos`), fetchJSON(`${API}/ingresos-config`), fetchJSON(`${API}/pay-config`), fetchJSON(`${API}/ingresos-extra`)]);
+    const [guardados, cfg, payCfg, extras, lavanderia] = await Promise.all([fetchJSON(`${API}/ingresos`), fetchJSON(`${API}/ingresos-config`), fetchJSON(`${API}/pay-config`), fetchJSON(`${API}/ingresos-extra`), fetchJSON(`${API}/ingresos-lavanderia`)]);
     if (INGRESOS_VIEW === "config") return renderIngresosConfig(guardados, cfg);
 
     const periodos = Object.keys(guardados).sort().reverse();
@@ -1549,6 +1549,9 @@ async function renderIngresos() {
       } catch (e) {}
     }
     const opUsd = cfg.cotizacion > 0 ? Math.round((opArs / cfg.cotizacion) * 100) / 100 : 0;
+    // Lavandería del mes (pago a Luján, ARS): otro costo operativo que se resta.
+    const lavArs = Number((lavanderia || {})[INGRESOS_MES]) || 0;
+    const lavUsd = cfg.cotizacion > 0 ? Math.round((lavArs / cfg.cotizacion) * 100) / 100 : 0;
 
     setMain(`
       <h1 class="ab-headline">Ingresos por departamento</h1>
@@ -1577,8 +1580,13 @@ async function renderIngresos() {
         <span>ARS</span>
         <button class="btn-secondary" id="ing-cotiz-save">Guardar</button>
       </div>
+      ${INGRESOS_MES ? `<div class="ing-cotiz">
+        <span class="ing-cotiz-lbl">Lavandería ${fmtMesLargo(INGRESOS_MES)} (ARS)</span>
+        <input type="number" inputmode="numeric" id="ing-lav" value="${lavArs || ""}" placeholder="ARS" />
+        <button class="btn-secondary" id="ing-lav-save">Guardar</button>
+      </div>` : ""}
 
-      <div id="ing-resultado">${formatoViejo ? `<div class="ing-banner">Este mes se importó con una versión anterior. Volvé a subir los archivos para verlo actualizado.</div>` : calc ? ingresosResultadoHTML(calc, INGRESOS_MES, opUsd, cfg.cotizacion, extrasMesFull) : `<div class="empty-state">Todavía no importaste ningún mes.</div>`}</div>
+      <div id="ing-resultado">${formatoViejo ? `<div class="ing-banner">Este mes se importó con una versión anterior. Volvé a subir los archivos para verlo actualizado.</div>` : calc ? ingresosResultadoHTML(calc, INGRESOS_MES, opUsd, cfg.cotizacion, extrasMesFull, lavUsd) : `<div class="empty-state">Todavía no importaste ningún mes.</div>`}</div>
     `);
 
     document.getElementById("ing-procesar").onclick = procesarImportIngresos;
@@ -1587,6 +1595,17 @@ async function renderIngresos() {
       try {
         await fetchJSON(`${API}/ingresos-config`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mapeo: cfg.mapeo || {}, limpiezaBooking: cfg.limpiezaBooking, cotizacion: v }) });
         toast("Cotización guardada");
+        renderIngresos();
+      } catch (err) {
+        toast("No se pudo guardar: " + err.message);
+      }
+    };
+    const lavBtn = document.getElementById("ing-lav-save");
+    if (lavBtn) lavBtn.onclick = async () => {
+      const v = Number(document.getElementById("ing-lav").value) || 0;
+      try {
+        await fetchJSON(`${API}/ingresos-lavanderia`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ periodo: INGRESOS_MES, montoArs: v }) });
+        toast("Lavandería guardada");
         renderIngresos();
       } catch (err) {
         toast("No se pudo guardar: " + err.message);
@@ -1652,12 +1671,12 @@ async function procesarImportIngresos() {
   }
 }
 
-function ingresosResultadoHTML(calc, periodo, opUsd, cotizacion, extrasMes) {
+function ingresosResultadoHTML(calc, periodo, opUsd, cotizacion, extrasMes, lavUsd) {
   const t = calc.totales;
   const grupos = calc.grupos;
   const sinN = calc.sinAsociar.length;
   const conCosto = cotizacion > 0;
-  const netoFinal = Math.round((t.neto - (opUsd || 0)) * 100) / 100;
+  const netoFinal = Math.round((t.neto - (opUsd || 0) - (lavUsd || 0)) * 100) / 100;
   // Columna de ganancia: neta (ya sin costo de limpieza) si hay cotización.
   const gananciaCol = conCosto ? "Ganás (neto)" : "Ganás vos";
   const fila = (g) => `
@@ -1680,6 +1699,7 @@ function ingresosResultadoHTML(calc, periodo, opUsd, cotizacion, extrasMes) {
         <div class="ing-dl-row"><span>Tu ganancia bruta</span><span>${usd(t.vos)}</span></div>
         <div class="ing-dl-row neg"><span>− Limpiezas (por depto)</span><span>${usd(t.costoLimpieza)}</span></div>
         <div class="ing-dl-row neg"><span>− Viático y plus del mes</span><span>${usd(opUsd || 0)}</span></div>
+        <div class="ing-dl-row neg"><span>− Lavandería del mes</span><span>${usd(lavUsd || 0)}</span></div>
         <div class="ing-dl-row total"><span>Tu neto</span><span>${usd(netoFinal)}</span></div>
       </div>` : ""}
     <div class="ing-tabla-wrap">
