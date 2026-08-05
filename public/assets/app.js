@@ -1553,6 +1553,8 @@ function desgloseReserva(r, limpiezaBooking) {
   } else if (r.modalidad === "larga_comision") {
     l.push(["Alquiler del mes", r.ingreso]);
     l.push(["− Comisión StayBaires", -(r.ingreso - r.dueno)]);
+  } else if (r.modalidad === "coanfitrion") {
+    l.push(["Comisión de StayBaires (15%)", r2(r.deposito - (r.limpieza || limpiezaBooking))]);
   }
   return l;
 }
@@ -1562,36 +1564,42 @@ function desgloseReserva(r, limpiezaBooking) {
 function abrirComprobantes(calc, periodo, cfg) {
   const limpiezaBooking = (cfg && cfg.limpiezaBooking) || 30;
   const porProp = {};
+  let hayCoanf = false;
   for (const g of calc.grupos || []) {
-    if (!g.asociado || g.dueno <= 0) continue;
+    if (!g.asociado || g.duenoSaca <= 0) continue;
+    if (g.modalidades.includes("coanfitrion")) hayCoanf = true;
     const prop = nombrePropietario(g.codigo);
     (porProp[prop] = porProp[prop] || []).push(g);
   }
   const props = Object.keys(porProp).sort();
-  if (!props.length) return toast("No hay pagos a propietarios este mes");
+  if (!props.length) return toast("No hay propietarios para liquidar este mes");
   const hoy = new Date().toLocaleDateString("es-AR");
 
-  const reservaHTML = (r) => `
+  const reservaHTML = (r) => {
+    const coanf = r.modalidad === "coanfitrion";
+    return `
     <div class="cmp-res">
       <div class="cmp-res-head">${fmtFechaReserva(r.inicio)} → ${fmtFechaReserva(r.fin)}${r.huesped ? ` · ${r.huesped}` : ""} · ${platformName(r.plataforma) || ""}</div>
       <table class="cmp-desglose">
         ${desgloseReserva(r, limpiezaBooking).map(([lbl, val]) => `<tr><td>${lbl}</td><td>${usdSigno(val)}</td></tr>`).join("")}
-        <tr class="cmp-res-tot"><td>Le corresponde al dueño</td><td>${usd(r.dueno)}</td></tr>
+        <tr class="cmp-res-tot"><td>Le corresponde al dueño${coanf ? " (85%, lo cobra de Airbnb)" : ""}</td><td>${usd(r.duenoSaca)}</td></tr>
       </table>
     </div>`;
+  };
 
   const deptoHTML = (g) => {
-    const reservas = g.reservas.filter((r) => r.dueno > 0);
+    const reservas = g.reservas.filter((r) => r.duenoSaca > 0);
     return `
       <div class="cmp-depto">
         <div class="cmp-depto-nom">${nombreDepto(g.codigo)}</div>
         ${reservas.map(reservaHTML).join("")}
-        <div class="cmp-depto-sub"><span>Subtotal ${reservas.length} reserva${reservas.length !== 1 ? "s" : ""}</span><span>${usd(g.dueno)}</span></div>
+        <div class="cmp-depto-sub"><span>Subtotal ${reservas.length} reserva${reservas.length !== 1 ? "s" : ""}</span><span>${usd(g.duenoSaca)}</span></div>
       </div>`;
   };
 
   const comprobante = (prop, grupos) => {
-    const total = r2(grupos.reduce((s, g) => s + g.dueno, 0));
+    const total = r2(grupos.reduce((s, g) => s + g.duenoSaca, 0));
+    const mixto = grupos.some((g) => g.modalidades.includes("coanfitrion"));
     return `
       <div class="comprobante">
         <div class="cmp-logo" role="img" aria-label="StayBaires"></div>
@@ -1599,7 +1607,8 @@ function abrirComprobantes(calc, periodo, cfg) {
         <div class="cmp-mes">${fmtMesLargo(periodo)}</div>
         <div class="cmp-prop">Propietario: <b>${prop}</b></div>
         ${grupos.map(deptoHTML).join("")}
-        <div class="cmp-total"><span>Total a transferir</span><span>${usd(total)}</span></div>
+        <div class="cmp-total"><span>Total del mes</span><span>${usd(total)}</span></div>
+        ${mixto ? `<div class="cmp-nota">Los montos marcados "lo cobra de Airbnb" los recibís directo de la plataforma; el resto te lo transfiere StayBaires.</div>` : ""}
         <div class="cmp-footer">StayBaires · Alquileres Temporarios<br>contact@staybaires.com · staybaires.com<br>Generado el ${hoy}</div>
       </div>`;
   };
