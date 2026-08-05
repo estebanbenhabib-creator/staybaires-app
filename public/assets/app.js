@@ -1512,9 +1512,55 @@ function nombrePropietario(codigo) {
   return (p.nombre || "").replace(/\s*depto.*$/i, "").trim() || p.nombre || codigo;
 }
 
+// Fecha de una reserva a "DD/MM". SheetJS suele convertir las fechas a número
+// serial de Excel; también manejamos MM/DD/YYYY (Airbnb) y "Mon DD, YYYY" (Booking).
+function fmtFechaReserva(s) {
+  if (s === "" || s == null) return "";
+  const num = Number(s);
+  if (!isNaN(num) && num > 20000 && num < 80000) {
+    const d = new Date(Date.UTC(1899, 11, 30) + num * 86400000);
+    return `${String(d.getUTCDate()).padStart(2, "0")}/${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+  }
+  const m = String(s).match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (m) return `${m[2].padStart(2, "0")}/${m[1].padStart(2, "0")}`;
+  const d = new Date(s);
+  if (!isNaN(d)) return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}`;
+  return String(s);
+}
+const r2 = (n) => Math.round(n * 100) / 100;
+// Valor con signo para el desglose ("−US$ 46,00").
+function usdSigno(v) {
+  return (v < 0 ? "−" : "") + usd(Math.abs(v));
+}
+// Paso a paso de cómo se llega a lo que se le transfiere al dueño por reserva.
+function desgloseReserva(r, limpiezaBooking) {
+  const l = [];
+  if (r.modalidad === "host_tercero") {
+    const base = r.deposito - r.limpieza;
+    const c15 = r2(base * 0.15);
+    const c8 = r2((base - c15) * 0.08);
+    l.push(["Depósito de Airbnb", r.deposito]);
+    l.push(["− Tarifa de limpieza", -r.limpieza]);
+    l.push(["− Comisión StayBaires (15%)", -c15]);
+    l.push(["− Comisión extra (8%)", -c8]);
+  } else if (r.modalidad === "tercero") {
+    const saldo = r.total - r.comision;
+    const c15 = r2((saldo - limpiezaBooking) * 0.15);
+    l.push(["Total cobrado al huésped", r.total]);
+    l.push(["− Comisión de Booking", -r.comision]);
+    l.push(["− Tarifa de limpieza", -limpiezaBooking]);
+    l.push(["− Comisión StayBaires (15%)", -c15]);
+  } else if (r.modalidad === "larga_comision") {
+    l.push(["Alquiler del mes", r.ingreso]);
+    l.push(["− Comisión StayBaires", -(r.ingreso - r.dueno)]);
+  }
+  return l;
+}
+
 // Documento imprimible: un comprobante por propietario (con logo) con el detalle
 // del pago del mes (solo lo que Esteban le gira: dueno > 0).
-function abrirComprobantes(calc, periodo) {
+function abrirComprobantes(calc, periodo, cfg) {
+  const limpiezaBooking = (cfg && cfg.limpiezaBooking) || 30;
   const porProp = {};
   for (const g of calc.grupos || []) {
     if (!g.asociado || g.dueno <= 0) continue;
@@ -1524,22 +1570,40 @@ function abrirComprobantes(calc, periodo) {
   const props = Object.keys(porProp).sort();
   if (!props.length) return toast("No hay pagos a propietarios este mes");
   const hoy = new Date().toLocaleDateString("es-AR");
+
+  const reservaHTML = (r) => `
+    <div class="cmp-res">
+      <div class="cmp-res-head">${fmtFechaReserva(r.inicio)} → ${fmtFechaReserva(r.fin)}${r.huesped ? ` · ${r.huesped}` : ""} · ${platformName(r.plataforma) || ""}</div>
+      <table class="cmp-desglose">
+        ${desgloseReserva(r, limpiezaBooking).map(([lbl, val]) => `<tr><td>${lbl}</td><td>${usdSigno(val)}</td></tr>`).join("")}
+        <tr class="cmp-res-tot"><td>Le corresponde al dueño</td><td>${usd(r.dueno)}</td></tr>
+      </table>
+    </div>`;
+
+  const deptoHTML = (g) => {
+    const reservas = g.reservas.filter((r) => r.dueno > 0);
+    return `
+      <div class="cmp-depto">
+        <div class="cmp-depto-nom">${nombreDepto(g.codigo)}</div>
+        ${reservas.map(reservaHTML).join("")}
+        <div class="cmp-depto-sub"><span>Subtotal ${reservas.length} reserva${reservas.length !== 1 ? "s" : ""}</span><span>${usd(g.dueno)}</span></div>
+      </div>`;
+  };
+
   const comprobante = (prop, grupos) => {
-    const total = Math.round(grupos.reduce((s, g) => s + g.dueno, 0) * 100) / 100;
+    const total = r2(grupos.reduce((s, g) => s + g.dueno, 0));
     return `
       <div class="comprobante">
         <div class="cmp-logo" role="img" aria-label="StayBaires"></div>
         <div class="cmp-title">Liquidación a propietario</div>
         <div class="cmp-mes">${fmtMesLargo(periodo)}</div>
         <div class="cmp-prop">Propietario: <b>${prop}</b></div>
-        <table class="cmp-tabla">
-          <thead><tr><th>Departamento</th><th>Ingreso</th><th>A transferir</th></tr></thead>
-          <tbody>${grupos.map((g) => `<tr><td>${nombreDepto(g.codigo)}</td><td>${usd(g.ingreso)}</td><td>${usd(g.dueno)}</td></tr>`).join("")}</tbody>
-          <tfoot><tr><td colspan="2">Total a transferir</td><td>${usd(total)}</td></tr></tfoot>
-        </table>
+        ${grupos.map(deptoHTML).join("")}
+        <div class="cmp-total"><span>Total a transferir</span><span>${usd(total)}</span></div>
         <div class="cmp-footer">StayBaires · Alquileres Temporarios<br>contact@staybaires.com · staybaires.com<br>Generado el ${hoy}</div>
       </div>`;
   };
+
   const overlay = document.createElement("div");
   overlay.className = "cmp-overlay";
   overlay.innerHTML = `
@@ -1689,7 +1753,7 @@ async function renderIngresos() {
       };
     });
     const cmpBtn = document.querySelector("[data-comprobantes]");
-    if (cmpBtn) cmpBtn.onclick = () => abrirComprobantes(calc, INGRESOS_MES);
+    if (cmpBtn) cmpBtn.onclick = () => abrirComprobantes(calc, INGRESOS_MES, cfg);
   } catch (err) {
     setMain(`<div class="empty-state">No se pudo cargar Ingresos.<br>${err.message}</div>`);
   }

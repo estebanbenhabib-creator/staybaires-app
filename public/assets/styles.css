@@ -548,3 +548,15 @@ main {
   .comprobante { border: none; border-radius: 0; margin: 0; max-width: none; page-break-after: always; padding: 24px 28px; }
   .no-print { display: none; }
 }
+
+/* ---- Comprobante: detalle por depto y reserva ---- */
+.cmp-depto { margin-top: 18px; }
+.cmp-depto-nom { font-size: 14px; font-weight: 700; color: var(--navy); border-bottom: 2px solid var(--border); padding-bottom: 5px; margin-bottom: 8px; }
+.cmp-res { margin: 10px 0 12px; }
+.cmp-res-head { font-size: 12.5px; font-weight: 600; color: var(--text-secondary); margin-bottom: 4px; }
+.cmp-desglose { width: 100%; border-collapse: collapse; font-size: 13px; }
+.cmp-desglose td { padding: 3px 0; color: var(--text-secondary); }
+.cmp-desglose td:last-child { text-align: right; white-space: nowrap; color: var(--text); }
+.cmp-res-tot td { font-weight: 700; color: var(--navy); border-top: 1px solid var(--border); padding-top: 5px; }
+.cmp-depto-sub { display: flex; justify-content: space-between; font-size: 13px; font-weight: 700; color: var(--text-secondary); border-top: 1px dashed var(--border); margin-top: 6px; padding-top: 6px; }
+.cmp-total { display: flex; justify-content: space-between; font-size: 17px; font-weight: 800; color: var(--navy); border-top: 2px solid var(--navy); margin-top: 18px; padding-top: 12px; }
