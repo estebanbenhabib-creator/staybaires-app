@@ -118,9 +118,17 @@
   // ---- REPARTO de una reserva cruda segun el mapeo ----
   function repartir(r, cfg) {
     const m = cfg.mapeo[r.unidad];
-    const codigo = m && m.codigo ? m.codigo : null;
+    const codigo = r.codigo || (m && m.codigo ? m.codigo : null);
     let vos, dueno, modalidad, ingreso;
-    if (r.plataforma === "airbnb") {
+    if (r.plataforma === "manual") {
+      // Reserva cargada a mano (no viene en los exports). Reparto tercero:
+      // Esteban se queda limpieza + comisionPct% del resto; el dueño el resto.
+      ingreso = r.total;
+      const pct = r.comisionPct != null ? Number(r.comisionPct) : 15;
+      dueno = (r.total - (r.limpieza || 0)) * (1 - pct / 100);
+      vos = r.total - dueno;
+      modalidad = "manual_tercero";
+    } else if (r.plataforma === "airbnb") {
       ingreso = r.deposito;
       const propio = m ? !!m.propio : contieneAlguna(r.unidad, cfg.propioAirbnb);
       if (r.tipoAirbnb === "coanfitrion") {

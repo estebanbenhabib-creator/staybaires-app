@@ -1555,6 +1555,11 @@ function desgloseReserva(r, limpiezaBooking) {
     l.push(["− Comisión StayBaires", -(r.ingreso - r.dueno)]);
   } else if (r.modalidad === "coanfitrion") {
     l.push(["Comisión de StayBaires (15%)", r2(r.deposito - (r.limpieza || limpiezaBooking))]);
+  } else if (r.modalidad === "manual_tercero") {
+    const pct = r.comisionPct != null ? Number(r.comisionPct) : 15;
+    l.push(["Cobro total", r.total]);
+    l.push(["− Tarifa de limpieza", -(r.limpieza || 0)]);
+    l.push([`− Comisión StayBaires (${pct}%)`, -r2((r.total - (r.limpieza || 0)) * pct / 100)]);
   }
   return l;
 }
@@ -1627,6 +1632,65 @@ function abrirComprobantes(calc, periodo, cfg) {
   overlay.querySelector("#cmp-print").onclick = () => window.print();
 }
 
+// Formulario para cargar a mano una reserva que no viene en los exports.
+function openReservaManualForm(periodo, onDone) {
+  const props = CONFIG.properties || [];
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+  overlay.innerHTML = `
+    <div class="modal">
+      <h3>Reserva a mano · ${fmtMesLargo(periodo)}</h3>
+      <label>Departamento</label>
+      <select id="rm-depto">${props.map((p) => `<option value="${p.codigo}">${p.nombre} — ${p.direccion || p.barrio}</option>`).join("")}</select>
+      <label>Ingreso (check-in)</label>
+      <input type="date" id="rm-inicio" value="${periodo}-01" />
+      <label>Egreso (check-out)</label>
+      <input type="date" id="rm-fin" value="${periodo}-01" />
+      <label>Huésped (opcional)</label>
+      <input type="text" id="rm-huesped" placeholder="Nombre" />
+      <label>Cobro total (USD)</label>
+      <input type="number" inputmode="numeric" id="rm-total" placeholder="0" />
+      <label>Tarifa de limpieza (USD)</label>
+      <input type="number" inputmode="numeric" id="rm-limp" value="30" />
+      <label>Tu comisión (% sobre el total sin limpieza)</label>
+      <input type="number" inputmode="numeric" id="rm-pct" value="15" />
+      <div class="cf-hint">Vos = limpieza + % del resto; el dueño se lleva el resto.</div>
+      <div class="modal-actions">
+        <button class="btn-secondary" id="rm-cancel">Cancelar</button>
+        <button class="btn-primary" id="rm-save">Guardar</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  const close = () => overlay.remove();
+  overlay.onclick = (e) => { if (e.target === overlay) close(); };
+  overlay.querySelector("#rm-cancel").onclick = close;
+  overlay.querySelector("#rm-save").onclick = async () => {
+    const total = Number(overlay.querySelector("#rm-total").value) || 0;
+    if (!total) return toast("Poné el cobro total");
+    try {
+      await fetchJSON(`${API}/ingresos-manual`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          periodo,
+          codigo: overlay.querySelector("#rm-depto").value,
+          inicio: overlay.querySelector("#rm-inicio").value,
+          fin: overlay.querySelector("#rm-fin").value,
+          huesped: overlay.querySelector("#rm-huesped").value.trim(),
+          total,
+          limpieza: Number(overlay.querySelector("#rm-limp").value) || 0,
+          comisionPct: Number(overlay.querySelector("#rm-pct").value) || 0,
+        }),
+      });
+      close();
+      toast("Reserva agregada");
+      onDone();
+    } catch (err) {
+      toast("No se pudo guardar: " + err.message);
+    }
+  };
+}
+
 // Etiqueta legible de cada modalidad de cobro (la que devuelve el motor).
 const MODALIDAD_LABEL = {
   coanfitrion: "Co-anfitrión · 15% + limpieza",
@@ -1643,7 +1707,7 @@ function modalidadTag(m) {
 
 async function renderIngresos() {
   try {
-    const [guardados, cfg, payCfg, extras, ingresosMes] = await Promise.all([fetchJSON(`${API}/ingresos`), fetchJSON(`${API}/ingresos-config`), fetchJSON(`${API}/pay-config`), fetchJSON(`${API}/ingresos-extra`), fetchJSON(`${API}/ingresos-mes`)]);
+    const [guardados, cfg, payCfg, extras, ingresosMes, manuales] = await Promise.all([fetchJSON(`${API}/ingresos`), fetchJSON(`${API}/ingresos-config`), fetchJSON(`${API}/pay-config`), fetchJSON(`${API}/ingresos-extra`), fetchJSON(`${API}/ingresos-mes`), fetchJSON(`${API}/ingresos-manual`)]);
     if (INGRESOS_VIEW === "config") return renderIngresosConfig(guardados, cfg);
 
     const periodos = Object.keys(guardados).sort().reverse();
@@ -1673,7 +1737,12 @@ async function renderIngresos() {
       } catch (e) {}
     }
     const cfgCalc = Object.assign({}, cfg, { valorDepto: payCfg.valorDepto || {}, extras: extrasMes, cotizacion });
-    const calc = mes && mes.reservas && !formatoViejo ? IngresosEngine.computeIngresos(mes.reservas, cfgCalc) : null;
+    // Reservas cargadas a mano del mes (no vienen en los exports).
+    const manualesMes = (manuales || []).filter((x) => x.periodo === INGRESOS_MES);
+    const reservasManuales = manualesMes.map((x) => ({ plataforma: "manual", codigo: x.codigo, inicio: x.inicio, fin: x.fin, huesped: x.huesped, total: x.total, limpieza: x.limpieza, comisionPct: x.comisionPct, manualId: x.id }));
+    const reservasImport = mes && mes.reservas && !formatoViejo ? mes.reservas : [];
+    const reservasTodas = reservasImport.concat(reservasManuales);
+    const calc = reservasTodas.length ? IngresosEngine.computeIngresos(reservasTodas, cfgCalc) : null;
     const opUsd = cotizacion > 0 ? Math.round((viaticoArs / cotizacion) * 100) / 100 : 0;
     const lavUsd = cotizacion > 0 ? Math.round((lavArs / cotizacion) * 100) / 100 : 0;
 
@@ -1710,7 +1779,9 @@ async function renderIngresos() {
         <button class="btn-primary" id="ing-mes-save" style="margin-top:12px;">Guardar mes</button>
       </div>` : ""}
 
-      <div id="ing-resultado">${formatoViejo ? `<div class="ing-banner">Este mes se importó con una versión anterior. Volvé a subir los archivos para verlo actualizado.</div>` : calc ? ingresosResultadoHTML(calc, INGRESOS_MES, opUsd, cotizacion, extrasMesFull, lavUsd) : `<div class="empty-state">Todavía no importaste ningún mes.</div>`}</div>
+      ${INGRESOS_MES ? `<button class="btn-secondary" data-add-manual-res style="width:100%; margin-bottom:12px;">+ Agregar reserva a mano</button>` : ""}
+
+      <div id="ing-resultado">${formatoViejo ? `<div class="ing-banner">Este mes se importó con una versión anterior. Volvé a subir los archivos para verlo actualizado.</div>` : calc ? ingresosResultadoHTML(calc, INGRESOS_MES, opUsd, cotizacion, extrasMesFull, lavUsd, manualesMes) : `<div class="empty-state">Todavía no importaste ningún mes.</div>`}</div>
     `);
 
     document.getElementById("ing-procesar").onclick = procesarImportIngresos;
@@ -1763,6 +1834,20 @@ async function renderIngresos() {
     });
     const cmpBtn = document.querySelector("[data-comprobantes]");
     if (cmpBtn) cmpBtn.onclick = () => abrirComprobantes(calc, INGRESOS_MES, cfg);
+    const addManual = document.querySelector("[data-add-manual-res]");
+    if (addManual) addManual.onclick = () => openReservaManualForm(INGRESOS_MES, renderIngresos);
+    document.querySelectorAll("[data-del-manual-res]").forEach((b) => {
+      b.onclick = async () => {
+        if (!confirm("¿Borrar esta reserva cargada a mano?")) return;
+        try {
+          await fetchJSON(`${API}/ingresos-manual`, { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: b.getAttribute("data-del-manual-res") }) });
+          toast("Reserva borrada");
+          renderIngresos();
+        } catch (err) {
+          toast("No se pudo borrar: " + err.message);
+        }
+      };
+    });
   } catch (err) {
     setMain(`<div class="empty-state">No se pudo cargar Ingresos.<br>${err.message}</div>`);
   }
@@ -1795,7 +1880,7 @@ async function procesarImportIngresos() {
   }
 }
 
-function ingresosResultadoHTML(calc, periodo, opUsd, cotizacion, extrasMes, lavUsd) {
+function ingresosResultadoHTML(calc, periodo, opUsd, cotizacion, extrasMes, lavUsd, manualesMes) {
   const t = calc.totales;
   const grupos = calc.grupos;
   const sinN = calc.sinAsociar.length;
@@ -1833,6 +1918,16 @@ function ingresosResultadoHTML(calc, periodo, opUsd, cotizacion, extrasMes, lavU
       </table>
     </div>
     ${grupos.some((g) => g.asociado && g.dueno > 0) ? `<button class="btn-secondary ing-cmp-btn" data-comprobantes>Comprobantes a propietarios (PDF)</button>` : ""}
+    ${(manualesMes || []).length ? `
+      <p class="ab-section ing-ext-h">Reservas cargadas a mano</p>
+      <div class="ing-ext-list">
+        ${manualesMes.map((m) => `
+          <div class="ing-ext-row">
+            <div class="ing-ext-info"><b>${nombreDepto(m.codigo)}</b><span class="ing-ext-fecha">${m.huesped ? m.huesped + " · " : ""}${fmtFechaReserva(m.inicio)} → ${fmtFechaReserva(m.fin)}</span></div>
+            <div class="ing-ext-monto">${usd(m.total)}</div>
+            <button class="ing-ext-del" data-del-manual-res="${m.id}" title="Borrar">✕</button>
+          </div>`).join("")}
+      </div>` : ""}
     ${(extrasMes || []).length ? `
       <p class="ab-section ing-ext-h">Extensiones cobradas por fuera</p>
       <div class="ing-ext-list">
