@@ -201,11 +201,13 @@
   function unidadesDetectadas(reservasCrudas) {
     const map = new Map();
     for (const r of reservasCrudas) {
+      // Las reservas cargadas a mano no salen de un anuncio: no van a la config.
+      if (!r.unidad) continue;
       if (!map.has(r.unidad)) map.set(r.unidad, { unidad: r.unidad, plataforma: r.plataforma, location: r.location || "", n: 0 });
       map.get(r.unidad).n += 1;
       if (r.plataforma === "booking" && r.location) map.get(r.unidad).location = r.location;
     }
-    return Array.from(map.values()).sort((a, b) => a.unidad.localeCompare(b.unidad));
+    return Array.from(map.values()).sort((a, b) => String(a.unidad || "").localeCompare(String(b.unidad || "")));
   }
 
   // Entrada principal: reservas CRUDAS (de parseArchivos) + config -> resultado.
