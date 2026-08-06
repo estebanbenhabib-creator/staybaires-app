@@ -6,6 +6,7 @@ const properties = require("../../data/properties.json");
 const employees = require("../../data/employees.json");
 const { fetchAllCalendars } = require("../lib/fetch-calendars");
 const { buildTasks, buildCheckins, consolidarBooking } = require("../lib/task-engine");
+const { reservaManualTasks } = require("../lib/manual-reservas");
 const { getJSON, setJSON } = require("../lib/store");
 
 async function runSync() {
@@ -39,6 +40,25 @@ async function runSync() {
 
   const tasks = [...icalTasks, ...manualTasks].sort((a, b) => a.date.localeCompare(b.date));
   const checkins = buildCheckins(properties, icsByCode, overrides, hoyAR, reservasBk);
+
+  // Reservas cargadas a mano (arregladas por fuera de las plataformas): generan
+  // su check-out (limpieza) y check-in, con dedup por id contra las de iCal.
+  const reservasManuales = await getJSON("ingresos-manual", []);
+  const idsTasks = new Set(tasks.map((t) => t.id));
+  const idsCheckins = new Set(checkins.map((c) => c.id));
+  for (const r of reservasManuales) {
+    const { checkout, checkin } = reservaManualTasks(r, properties, overrides);
+    if (checkout && !idsTasks.has(checkout.id)) {
+      tasks.push(checkout);
+      idsTasks.add(checkout.id);
+    }
+    if (checkin && !idsCheckins.has(checkin.id)) {
+      checkins.push(checkin);
+      idsCheckins.add(checkin.id);
+    }
+  }
+  tasks.sort((a, b) => a.date.localeCompare(b.date));
+  checkins.sort((a, b) => a.date.localeCompare(b.date));
 
   const payload = {
     tasks,

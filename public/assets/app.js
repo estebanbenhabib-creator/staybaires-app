@@ -535,7 +535,7 @@ function openNuevaTareaForm(onCreated) {
 }
 
 function platformName(p) {
-  return { airbnb: "Airbnb", booking: "Booking", vrbo: "Vrbo" }[p] || p || "";
+  return { airbnb: "Airbnb", booking: "Booking", vrbo: "Vrbo", directo: "Directo" }[p] || p || "";
 }
 // Color del avatar segun la colaboradora (fondo claro + texto del mismo tono).
 function avatarColors(id) {
