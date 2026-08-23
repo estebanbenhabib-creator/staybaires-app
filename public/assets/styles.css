@@ -390,6 +390,11 @@ main {
   color: var(--text);
 }
 
+.wa-listas { margin-top: 18px; }
+.wa-toggle { margin-top: 10px; }
+.wa-btns { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.wa-btns .btn-secondary { width: auto; flex: 1 1 auto; cursor: pointer; }
+
 .field {
   display: flex;
   flex-direction: column;

@@ -300,6 +300,96 @@ function todayISO() {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
+// ---------- Listas por WhatsApp (ruta de lavandería + recordatorio de limpieza) ----------
+// Esteban prepara la noche anterior la lista del día siguiente, así que estos
+// botones sirven para cualquier fecha (hoy/mañana en Inicio, o el día elegido
+// en el calendario). No mandan solos: abren WhatsApp con el texto pre-armado.
+
+let HOY_LISTA = "hoy"; // "hoy" | "manana" en la pantalla Inicio
+
+// Teléfonos guardados (en pay-config, mismos que usa Pagos). Cacheados por sesión.
+async function getTelefonos() {
+  if (!CACHE.telefonos) {
+    try {
+      const c = await fetchJSON(`${API}/pay-config`);
+      CACHE.telefonos = c.telefonos || {};
+    } catch {
+      CACHE.telefonos = {};
+    }
+  }
+  return CACHE.telefonos;
+}
+
+function deptoLinea(t) {
+  const dir = (t.direccion || t.propertyName || t.propertyCode || "").trim();
+  return t.barrio ? `${dir} — ${t.barrio}` : dir;
+}
+
+// Ruta para lavandería: los check-outs del día (con ⚡ si además entra huésped
+// ese mismo día, porque necesita blanquería lista).
+function buildRutaLavanderia(dateISO, payload) {
+  const outs = (payload.tasks || []).filter((t) => t.date === dateISO && t.type === "checkout");
+  const conEntrada = new Set((payload.checkins || []).filter((c) => c.date === dateISO).map((c) => c.propertyCode));
+  const cab = `🧺 Ruta ${fmtDateHeader(dateISO)} — check-outs`;
+  if (!outs.length) return `${cab}\n\nNo hay check-outs ese día.`;
+  const lineas = outs
+    .slice()
+    .sort((a, b) => deptoLinea(a).localeCompare(deptoLinea(b)))
+    .map((t, i) => `${i + 1}. ${deptoLinea(t)}${conEntrada.has(t.propertyCode) ? " ⚡ (entra huésped)" : ""}`);
+  return `${cab}\n${lineas.join("\n")}\n\nTotal: ${outs.length} depto${outs.length > 1 ? "s" : ""}`;
+}
+
+// Recordatorio de limpieza para una empleada: los check-outs que tiene asignados
+// ese día.
+function buildRecordatorioLimpieza(empId, dateISO, payload) {
+  const outs = (payload.tasks || []).filter((t) => t.date === dateISO && t.type === "checkout" && t.assignedTo === empId);
+  const nombre = employeeName(empId);
+  const cab = `🧼 Limpiezas ${fmtDateHeader(dateISO)}`;
+  if (!outs.length) return `${cab}\n\nHola ${nombre}, no tenés limpiezas ese día.`;
+  const lineas = outs
+    .slice()
+    .sort((a, b) => deptoLinea(a).localeCompare(deptoLinea(b)))
+    .map((t, i) => `${i + 1}. ${deptoLinea(t)}`);
+  return `${cab}\nHola ${nombre}, ${outs.length > 1 ? "te tocan" : "te toca"}:\n${lineas.join("\n")}\n\nTotal: ${outs.length}. ¡Gracias!`;
+}
+
+// Abre WhatsApp con el mensaje. Si hay teléfono, va directo a ese contacto; si
+// no, abre WhatsApp para elegir el contacto a mano.
+function abrirWhatsapp(tel, msg) {
+  const t = (tel || "").replace(/\D/g, "");
+  const url = t ? `https://wa.me/${t}?text=${encodeURIComponent(msg)}` : `https://wa.me/?text=${encodeURIComponent(msg)}`;
+  window.open(url, "_blank");
+}
+
+// Bloque de botones "Enviar por WhatsApp" para un día. Vacío si no hay check-outs.
+function whatsappListasHTML(dateISO, payload) {
+  const outs = (payload.tasks || []).filter((t) => t.date === dateISO && t.type === "checkout");
+  if (!outs.length) return "";
+  const cleaners = (CONFIG.employees || []).filter((e) => e.rol === "empleada");
+  const conTrabajo = cleaners.filter((e) => outs.some((t) => t.assignedTo === e.id));
+  const sinAsignar = outs.filter((t) => !t.assignedTo).length;
+  let botones = `<button class="btn-secondary" data-wa-lav="${dateISO}">🧺 Ruta lavandería</button>`;
+  botones += conTrabajo.map((e) => `<button class="btn-secondary" data-wa-limp="${e.id}" data-wa-date="${dateISO}">🧼 Recordatorio ${e.nombre}</button>`).join("");
+  const aviso = sinAsignar ? `<p class="cf-hint">${sinAsignar} limpieza${sinAsignar > 1 ? "s" : ""} sin asignar — no entra${sinAsignar > 1 ? "n" : ""} en ningún recordatorio hasta que elijas quién limpia.</p>` : "";
+  return `<div class="wa-listas"><p class="ab-section">Enviar por WhatsApp</p><div class="wa-btns">${botones}</div>${aviso}</div>`;
+}
+
+// Engancha los botones de WhatsApp (se llama tras cada render).
+async function attachWaHandlers(payload) {
+  const nodes = document.querySelectorAll("[data-wa-lav],[data-wa-limp]");
+  if (!nodes.length) return;
+  const tels = await getTelefonos();
+  document.querySelectorAll("[data-wa-lav]").forEach((b) => {
+    b.onclick = () => abrirWhatsapp(tels["lujan"], buildRutaLavanderia(b.getAttribute("data-wa-lav"), payload));
+  });
+  document.querySelectorAll("[data-wa-limp]").forEach((b) => {
+    b.onclick = () => {
+      const id = b.getAttribute("data-wa-limp");
+      abrirWhatsapp(tels[id], buildRecordatorioLimpieza(id, b.getAttribute("data-wa-date"), payload));
+    };
+  });
+}
+
 async function renderHoy() {
   try {
     const hoy = todayISO();
@@ -367,6 +457,17 @@ async function renderHoy() {
         </div>`;
     }
 
+    const diaLista = HOY_LISTA === "manana" ? isoPlusDays(hoy, 1) : hoy;
+    const waSection = manage
+      ? `
+      <p class="ab-section">Enviar listas por WhatsApp</p>
+      <div class="ab-toggle wa-toggle">
+        <button class="${HOY_LISTA === "hoy" ? "on" : ""}" data-hoylista="hoy">Hoy</button>
+        <button class="${HOY_LISTA === "manana" ? "on" : ""}" data-hoylista="manana">Mañana</button>
+      </div>
+      ${whatsappListasHTML(diaLista, payload) || `<div class="empty-state">No hay check-outs ${HOY_LISTA === "manana" ? "mañana" : "hoy"}.</div>`}`
+      : "";
+
     setMain(`
       <div class="ab-greeting">Hola ${SESSION.name} · ${fmtDateHeader(hoy)}</div>
       <h1 class="ab-headline">${headline}</h1>
@@ -379,9 +480,17 @@ async function renderHoy() {
           : ""
       }
       ${extras}
+      ${waSection}
     `);
 
     attachCardHandlers(renderHoy);
+    document.querySelectorAll("[data-hoylista]").forEach((b) => {
+      b.onclick = () => {
+        HOY_LISTA = b.getAttribute("data-hoylista");
+        renderHoy();
+      };
+    });
+    await attachWaHandlers(payload);
   } catch (err) {
     setMain(`<div class="empty-state">Error cargando el inicio: ${err.message}</div>`);
   }
@@ -652,7 +761,7 @@ function calListaHTML(payload, ctx) {
   return html;
 }
 
-function calMesHTML(idx, ctx) {
+function calMesHTML(idx, ctx, payload) {
   const today = todayISO();
   if (!CALMONTH) CALMONTH = today.slice(0, 7);
   if (!CALSELDAY || CALSELDAY.slice(0, 7) !== CALMONTH) {
@@ -708,7 +817,8 @@ function calMesHTML(idx, ctx) {
       <span><i class="red"></i>Check-out/in</span>
     </div>
     <p class="ab-day" style="margin-top:16px;">${fmtDateHeader(CALSELDAY)}${nOuts ? ` · ${nOuts} limpieza${nOuts > 1 ? "s" : ""}` : ""}</p>
-    ${detalle}`;
+    ${detalle}
+    ${payload && ctx.puedeAsignar ? whatsappListasHTML(CALSELDAY, payload) : ""}`;
 }
 
 async function renderCalendario() {
@@ -734,7 +844,7 @@ async function renderCalendario() {
         </div>`
       : "";
 
-    const body = CALVIEW === "mes" ? calMesHTML(idx, ctx) : calListaHTML(payload, ctx);
+    const body = CALVIEW === "mes" ? calMesHTML(idx, ctx, payload) : calListaHTML(payload, ctx);
 
     setMain(`
       <div class="ab-toolbar">
@@ -790,6 +900,7 @@ async function renderCalendario() {
     });
 
     attachCardHandlers(renderCalendario);
+    await attachWaHandlers(payload);
   } catch (err) {
     setMain(`<div class="empty-state">Error cargando el calendario: ${err.message}</div>`);
   }
