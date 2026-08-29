@@ -251,7 +251,14 @@ function consolidarBooking(properties, icsResultsByCode, estadiasPrev = {}, hoy 
       let checkout = r.end;
       if (match) {
         match._usada = true;
-        if (match.checkin < checkin) checkin = match.checkin; // llegada real mas temprana
+        // Solo adelantamos la llegada desde la memoria si el feed ya da la
+        // reserva por empezada (Booking corre el DTSTART de las EN CURSO al dia
+        // de hoy: ahi la llegada real fue antes). Si el feed la da a FUTURO, la
+        // reserva no empezo -> confiamos en esa fecha y no la tironeamos hacia
+        // atras. Sin esto, en deptos publicados en Airbnb+Booking la memoria
+        // puede tener un bloque fusionado mas largo que corre el check-in al
+        // pasado y lo esconde (aunque el checkout si se muestre).
+        if (match.checkin < checkin && (!hoy || checkin <= hoy)) checkin = match.checkin;
         if (match.checkout > checkout) checkout = match.checkout; // por si extendio
       }
       consolidadas.push({ checkin, checkout, conocida: !!match });
