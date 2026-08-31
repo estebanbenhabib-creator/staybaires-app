@@ -325,6 +325,17 @@ function deptoLinea(t) {
   return t.barrio ? `${dir} — ${t.barrio}` : dir;
 }
 
+// Etiqueta de una tarea para el recordatorio: check-out = dirección del depto;
+// tarea manual con depto = dirección + tipo (ej. "· Revisión"); tarea general
+// (sin depto) = su nota o tipo.
+function taskLinea(t) {
+  const isManual = t.source === "manual";
+  const esGeneral = isManual && !t.propertyCode && !t.direccion && !t.propertyName;
+  if (esGeneral) return t.notes || t.tipo || "Tarea";
+  const base = deptoLinea(t);
+  return isManual ? `${base} · ${t.tipo || "extra"}` : base;
+}
+
 // Ruta para lavandería: los check-outs del día (con ⚡ si además entra huésped
 // ese mismo día, porque necesita blanquería lista).
 function buildRutaLavanderia(dateISO, payload) {
@@ -342,15 +353,22 @@ function buildRutaLavanderia(dateISO, payload) {
 // Recordatorio de limpieza para una empleada: los check-outs que tiene asignados
 // ese día.
 function buildRecordatorioLimpieza(empId, dateISO, payload) {
-  const outs = (payload.tasks || []).filter((t) => t.date === dateISO && t.type === "checkout" && t.assignedTo === empId);
+  // Check-outs (limpiezas) + tareas cargadas a mano (inspecciones, limpiezas
+  // extra) asignadas a esa persona ese día.
+  const items = (payload.tasks || []).filter((t) => t.date === dateISO && t.assignedTo === empId && (t.type === "checkout" || t.source === "manual"));
   const nombre = employeeName(empId);
   const cab = `🧼 Limpiezas ${fmtDateHeader(dateISO)}`;
-  if (!outs.length) return `${cab}\n\nHola ${nombre}, no tenés limpiezas ese día.`;
-  const lineas = outs
+  if (!items.length) return `${cab}\n\nHola ${nombre}, no tenés tareas ese día.`;
+  const lineas = items
     .slice()
-    .sort((a, b) => deptoLinea(a).localeCompare(deptoLinea(b)))
-    .map((t, i) => `${i + 1}. ${deptoLinea(t)}`);
-  return `${cab}\nHola ${nombre}, ${outs.length > 1 ? "te tocan" : "te toca"}:\n${lineas.join("\n")}\n\nTotal: ${outs.length}. ¡Gracias!`;
+    .sort((a, b) => {
+      // Primero los check-out, después las tareas extra; cada grupo por dirección.
+      const am = a.source === "manual" ? 1 : 0;
+      const bm = b.source === "manual" ? 1 : 0;
+      return am - bm || taskLinea(a).localeCompare(taskLinea(b));
+    })
+    .map((t, i) => `${i + 1}. ${taskLinea(t)}`);
+  return `${cab}\nHola ${nombre}, ${items.length > 1 ? "te tocan" : "te toca"}:\n${lineas.join("\n")}\n\nTotal: ${items.length}. ¡Gracias!`;
 }
 
 // Abre WhatsApp con el mensaje. Si hay teléfono, va directo a ese contacto; si
@@ -363,13 +381,18 @@ function abrirWhatsapp(tel, msg) {
 
 // Bloque de botones "Enviar por WhatsApp" para un día. Vacío si no hay check-outs.
 function whatsappListasHTML(dateISO, payload) {
-  const outs = (payload.tasks || []).filter((t) => t.date === dateISO && t.type === "checkout");
-  if (!outs.length) return "";
+  const delDia = (payload.tasks || []).filter((t) => t.date === dateISO);
+  const outs = delDia.filter((t) => t.type === "checkout");
+  const manuales = delDia.filter((t) => t.source === "manual");
+  if (!outs.length && !manuales.length) return "";
   const cleaners = (CONFIG.employees || []).filter((e) => e.rol === "empleada");
-  const conTrabajo = cleaners.filter((e) => outs.some((t) => t.assignedTo === e.id));
-  const sinAsignar = outs.filter((t) => !t.assignedTo).length;
-  let botones = `<button class="btn-secondary" data-wa-lav="${dateISO}">🧺 Ruta lavandería</button>`;
+  // Una chica entra al recordatorio si tiene un check-out o una tarea extra asignada.
+  const conTrabajo = cleaners.filter((e) => outs.concat(manuales).some((t) => t.assignedTo === e.id));
+  const sinAsignar = outs.filter((t) => !t.assignedTo).length; // los extras pueden ir sin asignar a propósito
+  let botones = "";
+  if (outs.length) botones += `<button class="btn-secondary" data-wa-lav="${dateISO}">🧺 Ruta lavandería</button>`;
   botones += conTrabajo.map((e) => `<button class="btn-secondary" data-wa-limp="${e.id}" data-wa-date="${dateISO}">🧼 Recordatorio ${e.nombre}</button>`).join("");
+  if (!botones) return "";
   const aviso = sinAsignar ? `<p class="cf-hint">${sinAsignar} limpieza${sinAsignar > 1 ? "s" : ""} sin asignar — no entra${sinAsignar > 1 ? "n" : ""} en ningún recordatorio hasta que elijas quién limpia.</p>` : "";
   return `<div class="wa-listas"><p class="ab-section">Enviar por WhatsApp</p><div class="wa-btns">${botones}</div>${aviso}</div>`;
 }
