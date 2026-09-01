@@ -87,22 +87,31 @@
     return Array.from(grupos.values());
   }
 
+  // Booking exporta el .xls en inglés o en español según la config de la cuenta.
+  // Tomamos la primera columna que exista entre los alias.
+  function col(r, ...nombres) {
+    for (const n of nombres) {
+      if (r[n] != null && r[n] !== "") return r[n];
+    }
+    return null;
+  }
+
   function parseBooking(rows) {
     const out = [];
     for (const r of rows) {
-      const nombre = String(r["Property Name"] || "").trim();
-      const total = num(r["Total Payment"]);
+      const nombre = String(col(r, "Property Name", "Nombre del alojamiento") || "").trim();
+      const total = num(col(r, "Total Payment", "Importe total"));
       if (!nombre && !total) continue;
       out.push({
         plataforma: "booking",
-        codigoReserva: String(r["Reservation Number"] || "").replace(/\.0$/, ""),
+        codigoReserva: String(col(r, "Reservation Number", "Número de reserva") || "").replace(/\.0$/, ""),
         unidad: nombre,
-        location: String(r["Location"] || "").trim().replace(/\s+/g, " "),
+        location: String(col(r, "Location", "Ubicación") || "").trim().replace(/\s+/g, " "),
         total,
-        comision: num(r["Commission"]),
-        inicio: String(r["Arrival"] || "").trim(),
-        fin: String(r["Departure"] || "").trim(),
-        huesped: String(r["Booker Name"] || "").trim(),
+        comision: num(col(r, "Commission", "Comisión")),
+        inicio: String(col(r, "Arrival", "Llegada") || "").trim(),
+        fin: String(col(r, "Departure", "Salida") || "").trim(),
+        huesped: String(col(r, "Booker Name", "Titular de la reserva") || "").trim(),
       });
     }
     return out;

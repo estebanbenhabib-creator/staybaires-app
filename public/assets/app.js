@@ -1657,6 +1657,10 @@ function fmtFechaReserva(s) {
   }
   const m = String(s).match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
   if (m) return `${m[2].padStart(2, "0")}/${m[1].padStart(2, "0")}`;
+  // Booking en español exporta las fechas como texto: "3 de agosto de 2026".
+  const meses = { enero: 1, febrero: 2, marzo: 3, abril: 4, mayo: 5, junio: 6, julio: 7, agosto: 8, septiembre: 9, setiembre: 9, octubre: 10, noviembre: 11, diciembre: 12 };
+  const ms = String(s).toLowerCase().match(/^(\d{1,2})\s+de\s+([a-záéíóú]+)\s+de\s+(\d{4})$/);
+  if (ms && meses[ms[2]]) return `${ms[1].padStart(2, "0")}/${String(meses[ms[2]]).padStart(2, "0")}`;
   const d = new Date(s);
   if (!isNaN(d)) return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}`;
   return String(s);
