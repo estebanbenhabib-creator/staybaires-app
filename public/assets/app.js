@@ -1861,22 +1861,20 @@ async function renderIngresos() {
     const mesData = (ingresosMes || {})[INGRESOS_MES] || {};
     const cotizacion = Number(mesData.cotizacion) || 0;
     const lavArs = Number(mesData.lavanderia) || 0;
-    // Costos de colaboradoras del mes: tomados de la liquidación de Pagos, por
-    // empleada y por concepto (limpiezas, viáticos, plus, supermercado, otros).
-    // Si el mes ya se guardó con su snapshot (costos), se usa ese (congelado);
-    // si no, se calcula en vivo desde Pagos para ese rango.
-    let costos = mesData.costos || null;
+    // Costos de colaboradoras del mes, por empleada y por concepto (limpiezas,
+    // viáticos, plus, supermercado, otros). Se reconstruyen desde la historia
+    // PERSISTENTE (task-overrides: qué limpieza se marcó hecha y quién la hizo),
+    // no del calendario vivo, que pierde las reservas pasadas y dejaba los días
+    // —y por ende viáticos y limpiezas— cortísimos en meses cerrados.
+    let costos = costosDesdePagos([]);
     let costosEnVivo = false;
-    if (!costos && INGRESOS_MES) {
-      const [y, m] = INGRESOS_MES.split("-").map(Number);
-      const ult = String(new Date(y, m, 0).getDate()).padStart(2, "0");
+    if (INGRESOS_MES) {
       try {
-        const liq = await fetchJSON(`${API}/payments?from=${INGRESOS_MES}-01&to=${INGRESOS_MES}-${ult}`);
+        const liq = await fetchJSON(`${API}/liquidacion-mes?periodo=${INGRESOS_MES}`);
         costos = costosDesdePagos(liq.summary);
         costosEnVivo = costos.totales.total > 0;
       } catch (e) {}
     }
-    if (!costos) costos = costosDesdePagos([]);
     const cfgCalc = Object.assign({}, cfg, { valorDepto: payCfg.valorDepto || {}, extras: extrasMes, cotizacion });
     // Reservas cargadas a mano del mes (no vienen en los exports).
     const manualesMes = (manuales || []).filter((x) => x.periodo === INGRESOS_MES);
@@ -1914,7 +1912,7 @@ async function renderIngresos() {
         <label class="ing-lbl">Cotización · 1 USD = (ARS)</label>
         <input type="number" inputmode="numeric" id="ing-cotiz" value="${cotizacion || ""}" placeholder="ARS del mes" />
         <label class="ing-lbl">Costos de colaboradoras (tomados de Pagos)</label>
-        <div class="ing-costos-ro">${cotizacion > 0 ? `<b>${usd(costUsd)}</b> · ${fmtMoney(costos.totales.total)} ARS` : `<b>${fmtMoney(costos.totales.total)} ARS</b> · cargá la cotización para verlo en USD`}<span class="ing-costos-tag">${costosEnVivo ? "en vivo desde Pagos" : mesData.costos ? "congelado al guardar" : "sin datos en Pagos"}</span></div>
+        <div class="ing-costos-ro">${cotizacion > 0 ? `<b>${usd(costUsd)}</b> · ${fmtMoney(costos.totales.total)} ARS` : `<b>${fmtMoney(costos.totales.total)} ARS</b> · cargá la cotización para verlo en USD`}<span class="ing-costos-tag">${costosEnVivo ? "según las limpiezas marcadas hechas" : "sin limpiezas marcadas todavía"}</span></div>
         <label class="ing-lbl">Lavandería del mes (ARS)</label>
         <input type="number" inputmode="numeric" id="ing-lav" value="${lavArs || ""}" placeholder="ARS" />
         <button class="btn-primary" id="ing-mes-save" style="margin-top:12px;">Guardar mes</button>
@@ -1936,7 +1934,6 @@ async function renderIngresos() {
             periodo: INGRESOS_MES,
             cotizacion: Number(document.getElementById("ing-cotiz").value) || 0,
             lavanderia: Number(document.getElementById("ing-lav").value) || 0,
-            costos, // snapshot de Pagos, congelado al guardar el mes
           }),
         });
         toast(`${fmtMesLargo(INGRESOS_MES)} guardado`);
