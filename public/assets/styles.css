@@ -493,6 +493,11 @@ main {
 .ing-dl-row { display: flex; justify-content: space-between; gap: 10px; padding: 4px 0; color: var(--text-secondary); }
 .ing-dl-row.neg { color: var(--coral-fg); }
 .ing-dl-row.total { border-top: 1px solid var(--border); margin-top: 4px; padding-top: 8px; font-weight: 800; font-size: 16px; color: #0f6e56; }
+.ing-dl-emp { display: flex; flex-wrap: wrap; gap: 6px 14px; padding: 2px 0 4px 12px; font-size: 13px; color: var(--text-secondary); }
+.ing-dl-emp b { color: var(--text); font-weight: 700; }
+.ing-dl-concepto { padding: 2px 0 6px 12px; font-size: 12px; color: var(--text-muted); }
+.ing-costos-ro { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 8px 10px; font-size: 14px; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; }
+.ing-costos-tag { font-size: 11px; color: var(--text-muted); }
 
 /* ---- Ingresos: larga estadía (rentas fijas) ---- */
 .ing-cfg-h2 { font-size: 15px; font-weight: 700; color: var(--navy); margin: 24px 0 4px; padding-top: 16px; border-top: 2px solid var(--border); }

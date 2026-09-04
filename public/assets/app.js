@@ -1861,19 +1861,22 @@ async function renderIngresos() {
     const mesData = (ingresosMes || {})[INGRESOS_MES] || {};
     const cotizacion = Number(mesData.cotizacion) || 0;
     const lavArs = Number(mesData.lavanderia) || 0;
-    // Viático del mes: el guardado; si el mes nunca se guardó, se sugiere el de
-    // Pagos de ese rango (sirve para el mes en curso; en meses viejos da 0).
-    let viaticoArs = Number(mesData.viatico) || 0;
-    let viaticoSugerido = false;
-    if (!mesData.viatico && INGRESOS_MES) {
+    // Costos de colaboradoras del mes: tomados de la liquidación de Pagos, por
+    // empleada y por concepto (limpiezas, viáticos, plus, supermercado, otros).
+    // Si el mes ya se guardó con su snapshot (costos), se usa ese (congelado);
+    // si no, se calcula en vivo desde Pagos para ese rango.
+    let costos = mesData.costos || null;
+    let costosEnVivo = false;
+    if (!costos && INGRESOS_MES) {
       const [y, m] = INGRESOS_MES.split("-").map(Number);
       const ult = String(new Date(y, m, 0).getDate()).padStart(2, "0");
       try {
         const liq = await fetchJSON(`${API}/payments?from=${INGRESOS_MES}-01&to=${INGRESOS_MES}-${ult}`);
-        viaticoArs = (liq.summary || []).reduce((s, e) => s + (e.viatico || 0) + (e.plusDomingo || 0) + (e.plusFeriado || 0) + (e.itemsTotal || 0), 0);
-        viaticoSugerido = viaticoArs > 0;
+        costos = costosDesdePagos(liq.summary);
+        costosEnVivo = costos.totales.total > 0;
       } catch (e) {}
     }
+    if (!costos) costos = costosDesdePagos([]);
     const cfgCalc = Object.assign({}, cfg, { valorDepto: payCfg.valorDepto || {}, extras: extrasMes, cotizacion });
     // Reservas cargadas a mano del mes (no vienen en los exports).
     const manualesMes = (manuales || []).filter((x) => x.periodo === INGRESOS_MES);
@@ -1881,7 +1884,7 @@ async function renderIngresos() {
     const reservasImport = mes && mes.reservas && !formatoViejo ? mes.reservas : [];
     const reservasTodas = reservasImport.concat(reservasManuales);
     const calc = reservasTodas.length ? IngresosEngine.computeIngresos(reservasTodas, cfgCalc) : null;
-    const opUsd = cotizacion > 0 ? Math.round((viaticoArs / cotizacion) * 100) / 100 : 0;
+    const costUsd = cotizacion > 0 ? Math.round((costos.totales.total / cotizacion) * 100) / 100 : 0;
     const lavUsd = cotizacion > 0 ? Math.round((lavArs / cotizacion) * 100) / 100 : 0;
 
     setMain(`
@@ -1910,8 +1913,8 @@ async function renderIngresos() {
         <div class="ab-sub" style="margin:0 0 8px;">Cada mes se cierra con su propia cotización y sus costos. Quedan guardados y no se pisan.</div>
         <label class="ing-lbl">Cotización · 1 USD = (ARS)</label>
         <input type="number" inputmode="numeric" id="ing-cotiz" value="${cotizacion || ""}" placeholder="ARS del mes" />
-        <label class="ing-lbl">Viático + plus del mes (ARS)${viaticoSugerido ? " · sugerido de Pagos" : ""}</label>
-        <input type="number" inputmode="numeric" id="ing-viatico" value="${viaticoArs || ""}" placeholder="ARS" />
+        <label class="ing-lbl">Costos de colaboradoras (tomados de Pagos)</label>
+        <div class="ing-costos-ro">${cotizacion > 0 ? `<b>${usd(costUsd)}</b> · ${fmtMoney(costos.totales.total)} ARS` : `<b>${fmtMoney(costos.totales.total)} ARS</b> · cargá la cotización para verlo en USD`}<span class="ing-costos-tag">${costosEnVivo ? "en vivo desde Pagos" : mesData.costos ? "congelado al guardar" : "sin datos en Pagos"}</span></div>
         <label class="ing-lbl">Lavandería del mes (ARS)</label>
         <input type="number" inputmode="numeric" id="ing-lav" value="${lavArs || ""}" placeholder="ARS" />
         <button class="btn-primary" id="ing-mes-save" style="margin-top:12px;">Guardar mes</button>
@@ -1919,7 +1922,7 @@ async function renderIngresos() {
 
       ${INGRESOS_MES ? `<button class="btn-secondary" data-add-manual-res style="width:100%; margin-bottom:12px;">+ Agregar reserva a mano</button>` : ""}
 
-      <div id="ing-resultado">${formatoViejo ? `<div class="ing-banner">Este mes se importó con una versión anterior. Volvé a subir los archivos para verlo actualizado.</div>` : calc ? ingresosResultadoHTML(calc, INGRESOS_MES, opUsd, cotizacion, extrasMesFull, lavUsd, manualesMes) : `<div class="empty-state">Todavía no importaste ningún mes.</div>`}</div>
+      <div id="ing-resultado">${formatoViejo ? `<div class="ing-banner">Este mes se importó con una versión anterior. Volvé a subir los archivos para verlo actualizado.</div>` : calc ? ingresosResultadoHTML(calc, INGRESOS_MES, costos, cotizacion, extrasMesFull, lavUsd, manualesMes) : `<div class="empty-state">Todavía no importaste ningún mes.</div>`}</div>
     `);
 
     document.getElementById("ing-procesar").onclick = procesarImportIngresos;
@@ -1932,8 +1935,8 @@ async function renderIngresos() {
           body: JSON.stringify({
             periodo: INGRESOS_MES,
             cotizacion: Number(document.getElementById("ing-cotiz").value) || 0,
-            viatico: Number(document.getElementById("ing-viatico").value) || 0,
             lavanderia: Number(document.getElementById("ing-lav").value) || 0,
+            costos, // snapshot de Pagos, congelado al guardar el mes
           }),
         });
         toast(`${fmtMesLargo(INGRESOS_MES)} guardado`);
@@ -2018,40 +2021,80 @@ async function procesarImportIngresos() {
   }
 }
 
-function ingresosResultadoHTML(calc, periodo, opUsd, cotizacion, extrasMes, lavUsd, manualesMes) {
+// Arma el desglose de costos de colaboradoras a partir de la liquidación de
+// Pagos (summary). Por empleada (total) y por concepto: limpiezas (valor por
+// depto), viáticos (días × tarifa), plus (domingo/feriado + ítems "Plus…"),
+// supermercado (ítems "…super…") y otros ítems. Todo en ARS.
+function costosDesdePagos(summary) {
+  const porEmpleada = [];
+  const tot = { limpiezas: 0, viaticos: 0, plus: 0, supermercado: 0, otros: 0, total: 0 };
+  for (const s of summary || []) {
+    let supermercado = 0;
+    let plus = (s.plusDomingo || 0) + (s.plusFeriado || 0);
+    let otros = 0;
+    for (const it of s.items || []) {
+      const m = Number(it.monto) || 0;
+      const c = it.concepto || "";
+      if (/super/i.test(c)) supermercado += m;
+      else if (/plus/i.test(c)) plus += m;
+      else otros += m;
+    }
+    const emp = { id: s.employeeId, nombre: s.nombre, limpiezas: s.valorDeptos || 0, viaticos: s.viatico || 0, plus, supermercado, otros, total: s.total || 0 };
+    if (emp.total > 0) porEmpleada.push(emp);
+    tot.limpiezas += emp.limpiezas;
+    tot.viaticos += emp.viaticos;
+    tot.plus += emp.plus;
+    tot.supermercado += emp.supermercado;
+    tot.otros += emp.otros;
+    tot.total += emp.total;
+  }
+  return { porEmpleada, totales: tot };
+}
+
+function ingresosResultadoHTML(calc, periodo, costos, cotizacion, extrasMes, lavUsd, manualesMes) {
   const t = calc.totales;
   const grupos = calc.grupos;
   const sinN = calc.sinAsociar.length;
   const conCosto = cotizacion > 0;
-  const netoFinal = Math.round((t.neto - (opUsd || 0) - (lavUsd || 0)) * 100) / 100;
-  // Columna de ganancia: neta (ya sin costo de limpieza) si hay cotización.
-  const gananciaCol = conCosto ? "Ganás (neto)" : "Ganás vos";
+  const toUsd = (ars) => Math.round((Number(ars || 0) / cotizacion) * 100) / 100;
+  const c = costos.totales;
+  const costUsd = conCosto ? toUsd(c.total) : 0;
+  const netoFinal = Math.round((t.vos - costUsd - (lavUsd || 0)) * 100) / 100;
   const fila = (g) => `
     <tr class="${g.asociado ? "" : "ing-sin"}">
       <td>${g.asociado ? `<b>${nombreDepto(g.codigo)}</b><div class="ing-mods">${(g.modalidades || []).map(modalidadTag).join("")}</div>` : `<span class="ing-plat ${g.plataforma}">${g.plataforma === "airbnb" ? "Airbnb" : "Booking"}</span> ${g.unidad} <span class="ing-tag">sin asignar</span>`}</td>
       <td class="num">${g.n}</td>
-      <td class="num vos">${usd(conCosto ? g.neto : g.vos)}</td>
+      <td class="num vos">${usd(g.vos)}</td>
       <td class="num dueno">${g.dueno > 0 ? usd(g.dueno) : "—"}</td>
     </tr>`;
+  // Fila por concepto del desglose de costos.
+  const conceptoItems = [
+    ["Limpiezas", c.limpiezas],
+    ["Viáticos", c.viaticos],
+    ["Plus", c.plus],
+    ["Supermercado", c.supermercado],
+    ["Otros", c.otros],
+  ].filter(([, v]) => v > 0);
   return `
     <div class="ing-totales">
       <div class="ing-kpi vos"><span class="lbl">Ganás vos${conCosto ? " (neto)" : ""}</span><span class="val">${usd(conCosto ? netoFinal : t.vos)}</span></div>
       <div class="ing-kpi dueno"><span class="lbl">A los dueños</span><span class="val">${usd(t.dueno)}</span></div>
     </div>
     <div class="ab-sub ing-resumen">${fmtMesLargo(periodo)} · ${t.n} reservas · ingreso total ${usd(t.ingreso)}<button class="link-danger" data-del-periodo="${periodo}">Borrar mes</button></div>
-    ${!conCosto ? `<div class="ing-banner">Cargá la cotización (1 USD = X ARS) arriba para restar el costo de limpieza y ver tu neto. Por ahora se muestra tu ganancia bruta.</div>` : ""}
+    ${!conCosto ? `<div class="ing-banner">Cargá la cotización (1 USD = X ARS) arriba para restar los costos y ver tu neto. Por ahora se muestra tu ganancia bruta.</div>` : ""}
     ${sinN ? `<div class="ing-banner">Hay ${sinN} anuncio${sinN !== 1 ? "s" : ""} sin asignar a un departamento. <button class="link-edit" data-ing-config>Asociar ahora →</button></div>` : ""}
     ${conCosto ? `
       <div class="ing-desglose">
         <div class="ing-dl-row"><span>Tu ganancia bruta</span><span>${usd(t.vos)}</span></div>
-        <div class="ing-dl-row neg"><span>− Limpiezas (por depto)</span><span>${usd(t.costoLimpieza)}</span></div>
-        <div class="ing-dl-row neg"><span>− Viático y plus del mes</span><span>${usd(opUsd || 0)}</span></div>
+        <div class="ing-dl-row neg"><span>− Pago a colaboradoras</span><span>${usd(costUsd)}</span></div>
+        ${costos.porEmpleada.length ? `<div class="ing-dl-emp">${costos.porEmpleada.map((e) => `<span><b>${e.nombre}</b> ${usd(toUsd(e.total))}</span>`).join("")}</div>` : ""}
+        ${conceptoItems.length ? `<div class="ing-dl-concepto">${conceptoItems.map(([n, v]) => `${n} ${usd(toUsd(v))}`).join(" · ")}</div>` : ""}
         <div class="ing-dl-row neg"><span>− Lavandería del mes</span><span>${usd(lavUsd || 0)}</span></div>
         <div class="ing-dl-row total"><span>Tu neto</span><span>${usd(netoFinal)}</span></div>
       </div>` : ""}
     <div class="ing-tabla-wrap">
       <table class="ing-tabla">
-        <thead><tr><th>Departamento</th><th>Res.</th><th>${gananciaCol}</th><th>Al dueño</th></tr></thead>
+        <thead><tr><th>Departamento</th><th>Res.</th><th>Ganás vos</th><th>Al dueño</th></tr></thead>
         <tbody>${grupos.map(fila).join("")}</tbody>
       </table>
     </div>
@@ -2076,7 +2119,7 @@ function ingresosResultadoHTML(calc, periodo, opUsd, cotizacion, extrasMes, lavU
             <button class="ing-ext-del" data-del-extra="${e.id}" title="Borrar">✕</button>
           </div>`).join("")}
       </div>` : ""}
-    <p class="ing-nota">${conCosto ? `El "neto" por depto ya descuenta el costo de limpieza de ese depto (${usd(t.costoLimpieza)} en total). El viático y los plus del mes (${usd(opUsd || 0)}) se restan aparte porque son por día, no por depto. ` : ""}Los deptos co-anfitrión o propios no tienen pago a dueño.</p>
+    <p class="ing-nota">${conCosto ? `La tabla muestra tu ganancia bruta por depto. Los costos (pago a colaboradoras — limpiezas, viáticos, plus y supermercado — y lavandería) se restan a nivel mes porque son por día/por persona, no por depto. Los números salen de Pagos. ` : ""}Los deptos co-anfitrión o propios no tienen pago a dueño.</p>
   `;
 }
 

@@ -31,6 +31,9 @@ exports.handler = async (event) => {
       cotizacion: body.cotizacion != null ? Number(body.cotizacion) || 0 : prev.cotizacion || 0,
       viatico: body.viatico != null ? Number(body.viatico) || 0 : prev.viatico || 0,
       lavanderia: body.lavanderia != null ? Number(body.lavanderia) || 0 : prev.lavanderia || 0,
+      // Snapshot de costos de colaboradoras tomado de Pagos al guardar el mes
+      // (por empleada + por concepto: limpiezas, viáticos, plus, supermercado, otros).
+      costos: body.costos != null ? body.costos : prev.costos || null,
     };
     await setJSON("ingresos-mes", all);
     return json(200, { ok: true, periodo: body.periodo, datos: all[body.periodo] });
