@@ -1741,8 +1741,23 @@ function abrirComprobantes(calc, periodo, cfg) {
   };
 
   const comprobante = (prop, grupos) => {
-    const total = r2(grupos.reduce((s, g) => s + g.duenoSaca, 0));
-    const mixto = grupos.some((g) => g.modalidades.includes("coanfitrion"));
+    // Separar lo que el dueño cobra directo de Airbnb (co-anfitrión) de lo que
+    // efectivamente le transfiere StayBaires (el resto). El "Total" del mes es
+    // lo que le corresponde en total; abajo se desglosa cómo lo cobra.
+    let totalSaca = 0;
+    let cobraAirbnb = 0;
+    let transfiere = 0;
+    for (const g of grupos)
+      for (const r of g.reservas) {
+        if (r.duenoSaca <= 0) continue;
+        totalSaca += r.duenoSaca;
+        if (r.modalidad === "coanfitrion") cobraAirbnb += r.duenoSaca;
+        else transfiere += r.duenoSaca;
+      }
+    totalSaca = r2(totalSaca);
+    cobraAirbnb = r2(cobraAirbnb);
+    transfiere = r2(transfiere);
+    const hayCoanfEste = cobraAirbnb > 0;
     return `
       <div class="comprobante">
         <div class="cmp-logo" role="img" aria-label="StayBaires"></div>
@@ -1750,8 +1765,14 @@ function abrirComprobantes(calc, periodo, cfg) {
         <div class="cmp-mes">${fmtMesLargo(periodo)}</div>
         <div class="cmp-prop">Propietario: <b>${prop}</b></div>
         ${grupos.map(deptoHTML).join("")}
-        <div class="cmp-total"><span>Total del mes</span><span>${usd(total)}</span></div>
-        ${mixto ? `<div class="cmp-nota">Los montos marcados "lo cobra de Airbnb" los recibís directo de la plataforma; el resto te lo transfiere StayBaires.</div>` : ""}
+        ${
+          hayCoanfEste
+            ? `<div class="cmp-total"><span>Le corresponde al dueño</span><span>${usd(totalSaca)}</span></div>
+        <div class="cmp-split"><span>Lo cobra directo de Airbnb</span><span>${usd(cobraAirbnb)}</span></div>
+        <div class="cmp-split cmp-split-pay"><span>Le transfiere StayBaires</span><span>${usd(transfiere)}</span></div>`
+            : `<div class="cmp-total"><span>Total a transferir</span><span>${usd(transfiere)}</span></div>`
+        }
+        ${hayCoanfEste ? `<div class="cmp-nota">Los montos marcados "lo cobra de Airbnb" los recibe directo de la plataforma; StayBaires le transfiere ${usd(transfiere)}.</div>` : ""}
         <div class="cmp-footer">StayBaires · Alquileres Temporarios<br>contact@staybaires.com · staybaires.com<br>Generado el ${hoy}</div>
       </div>`;
   };
