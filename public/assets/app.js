@@ -1692,7 +1692,9 @@ function desgloseReserva(r, limpiezaBooking) {
     l.push(["Alquiler del mes", r.ingreso]);
     l.push(["− Comisión StayBaires", -(r.ingreso - r.dueno)]);
   } else if (r.modalidad === "coanfitrion") {
-    l.push(["Comisión de StayBaires (15%)", r2(r.deposito - (r.limpieza || limpiezaBooking))]);
+    const limp = r.limpiezaCoanf != null ? r.limpiezaCoanf : r.limpieza || limpiezaBooking;
+    l.push(["Comisión de StayBaires (15%)", r2(r.deposito - limp)]);
+    l.push(["Tarifa de limpieza (la cobra StayBaires)", limp]);
   } else if (r.modalidad === "manual_tercero") {
     const pct = r.comisionPct != null ? Number(r.comisionPct) : 15;
     l.push(["Cobro total", r.total]);

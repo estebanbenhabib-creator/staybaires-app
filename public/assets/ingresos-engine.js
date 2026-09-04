@@ -180,9 +180,16 @@
     // Lo que SACA el propietario. En co-anfitrión Airbnb le paga directo: el
     // Monto que le liquida a Esteban es su 15% + limpieza, así que el 85% del
     // dueño = (deposito - limpieza) * 85/15. En el resto es lo mismo que "dueno".
-    const limpiezaCoanf = r.limpieza || cfg.limpiezaBooking;
+    // Tarifa de limpieza para co-anfitrión: Airbnb no la informa en estas filas,
+    // así que se toma la real si viniera, luego la estimada por depto (⚙️), y por
+    // último la fija global. Es parte de lo que Esteban cobra (limpieza + 15%).
+    let limpiezaCoanf = Number(r.limpieza) || 0;
+    if (!limpiezaCoanf) {
+      const est = cfg.limpiezaEstimada && cfg.limpiezaEstimada[codigo];
+      limpiezaCoanf = est != null && est !== "" ? Number(est) || 0 : cfg.limpiezaBooking || 0;
+    }
     const duenoSaca = r.plataforma === "airbnb" && modalidad === "coanfitrion" ? round2(((r.deposito - limpiezaCoanf) * 85) / 15) : round2(dueno);
-    return { ...r, codigo, modalidad, ingreso: round2(ingreso), vos: round2(vos), dueno: round2(dueno), duenoSaca, costoLimpieza, neto };
+    return { ...r, codigo, modalidad, ingreso: round2(ingreso), vos: round2(vos), dueno: round2(dueno), duenoSaca, costoLimpieza, neto, limpiezaCoanf: round2(limpiezaCoanf) };
   }
 
   function agrupar(reservas) {
