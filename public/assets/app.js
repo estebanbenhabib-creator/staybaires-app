@@ -2200,6 +2200,7 @@ async function renderIngresosConfig(guardados, cfg) {
           <div class="ing-cfg-nom"><span class="ing-plat ${u.plataforma}">${u.plataforma === "airbnb" ? "Airbnb" : "Booking"}</span> ${u.unidad}${u.location ? `<span class="ing-cfg-loc">${u.location}</span>` : ""}</div>
           <select class="ing-cfg-depto">${opciones(m.codigo || "")}</select>
           <label class="ing-cfg-propio"><input type="checkbox" class="ing-cfg-chk" ${m.propio ? "checked" : ""} /> Propio</label>
+          ${u.plataforma === "airbnb" ? `<label class="ing-cfg-propio ing-cfg-coanf-lbl"><input type="checkbox" class="ing-cfg-coanf" ${m.coanf ? "checked" : ""} /> Dueño cobra x Airbnb</label>` : ""}
         </div>`;
         })
         .join("")}
@@ -2242,7 +2243,8 @@ async function renderIngresosConfig(guardados, cfg) {
     document.querySelectorAll(".ing-cfg-row").forEach((row) => {
       const unidad = decodeURIComponent(row.getAttribute("data-unidad"));
       const codigo = row.querySelector(".ing-cfg-depto").value;
-      if (codigo) nuevoMapeo[unidad] = { codigo, propio: row.querySelector(".ing-cfg-chk").checked };
+      const coanfEl = row.querySelector(".ing-cfg-coanf");
+      if (codigo) nuevoMapeo[unidad] = { codigo, propio: row.querySelector(".ing-cfg-chk").checked, coanf: coanfEl ? coanfEl.checked : false };
     });
     const nuevasFijas = [];
     document.querySelectorAll(".ing-fija-row").forEach((row) => {

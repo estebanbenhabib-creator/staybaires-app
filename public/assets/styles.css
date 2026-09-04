@@ -477,7 +477,8 @@ main {
 .ing-tabla tr.ing-sin td { background: #fff8f2; }
 .ing-tag { display: inline-block; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; color: var(--coral-fg); background: var(--coral-bg); padding: 1px 6px; border-radius: 6px; margin-left: 4px; }
 .ing-cfg-list { margin: 14px 0; display: flex; flex-direction: column; gap: 8px; }
-.ing-cfg-row { border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 12px; display: grid; grid-template-columns: 1fr auto; grid-template-areas: "nom nom" "depto propio"; gap: 8px 10px; align-items: center; }
+.ing-cfg-row { border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 12px; display: grid; grid-template-columns: 1fr auto; grid-template-areas: "nom nom" "depto propio" "coanf coanf"; gap: 8px 10px; align-items: center; }
+.ing-cfg-coanf-lbl { grid-area: coanf; justify-self: start; }
 .ing-cfg-nom { grid-area: nom; font-size: 13px; font-weight: 600; line-height: 1.35; }
 .ing-cfg-loc { display: block; font-size: 11px; color: var(--text-muted); font-weight: 400; }
 .ing-cfg-depto { grid-area: depto; border: 1px solid var(--border); border-radius: var(--radius); padding: 8px 10px; font-size: 13px; background: var(--surface); max-width: 100%; }

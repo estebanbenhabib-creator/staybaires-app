@@ -140,7 +140,12 @@
     } else if (r.plataforma === "airbnb") {
       ingreso = r.deposito;
       const propio = m ? !!m.propio : contieneAlguna(r.unidad, cfg.propioAirbnb);
-      if (r.tipoAirbnb === "coanfitrion") {
+      // "Dueño cobra por Airbnb": anuncio donde el propietario está como
+      // co-anfitrión y cobra directo de Airbnb, aunque en TU export figure como
+      // "Reserva" (vos sos el anfitrión principal). Tu Monto ya es solo tu
+      // comisión + limpieza, así que se reparte igual que co-anfitrión.
+      const duenoCobraAirbnb = m ? !!m.coanf : false;
+      if (r.tipoAirbnb === "coanfitrion" || (!propio && duenoCobraAirbnb)) {
         modalidad = "coanfitrion";
         vos = r.deposito;
         dueno = 0;
@@ -176,7 +181,7 @@
     // Monto que le liquida a Esteban es su 15% + limpieza, así que el 85% del
     // dueño = (deposito - limpieza) * 85/15. En el resto es lo mismo que "dueno".
     const limpiezaCoanf = r.limpieza || cfg.limpiezaBooking;
-    const duenoSaca = r.plataforma === "airbnb" && r.tipoAirbnb === "coanfitrion" ? round2(((r.deposito - limpiezaCoanf) * 85) / 15) : round2(dueno);
+    const duenoSaca = r.plataforma === "airbnb" && modalidad === "coanfitrion" ? round2(((r.deposito - limpiezaCoanf) * 85) / 15) : round2(dueno);
     return { ...r, codigo, modalidad, ingreso: round2(ingreso), vos: round2(vos), dueno: round2(dueno), duenoSaca, costoLimpieza, neto };
   }
 
