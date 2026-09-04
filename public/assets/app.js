@@ -2075,11 +2075,14 @@ function ingresosResultadoHTML(calc, periodo, costos, cotizacion, extrasMes, lav
     ["Supermercado", c.supermercado],
     ["Otros", c.otros],
   ].filter(([, v]) => v > 0);
-  // Limpieza: tarifa COBRADA al huésped (Airbnb real + Booking estimado) vs.
-  // GASTO real de limpieza (lo que se le paga a las chicas, de Pagos).
-  const limpCobAir = calc.totales.limpiezaCobradaAirbnb || 0;
-  const limpCobBkg = calc.totales.limpiezaCobradaBooking || 0;
-  const limpCobrada = Math.round((limpCobAir + limpCobBkg) * 100) / 100;
+  // Limpieza: tarifa COBRADA al huésped vs. GASTO real (lo que se paga a las
+  // chicas, de Pagos). Airbnb informa la tarifa solo en host directo (real); en
+  // co-anfitrión y en Booking no la informa y se estima con la fija.
+  const limpAirReal = calc.totales.limpiezaAirbnbReal || 0;
+  const limpAirEst = calc.totales.limpiezaAirbnbEst || 0;
+  const limpBkgEst = calc.totales.limpiezaBookingEst || 0;
+  const limpEstTotal = Math.round((limpAirEst + limpBkgEst) * 100) / 100;
+  const limpCobrada = Math.round((limpAirReal + limpAirEst + limpBkgEst) * 100) / 100;
   const limpGasto = conCosto ? toUsd(c.limpiezas) : 0;
   const limpDif = Math.round((limpCobrada - limpGasto) * 100) / 100;
   const mostrarLimp = limpCobrada > 0 || limpGasto > 0;
@@ -2104,7 +2107,7 @@ function ingresosResultadoHTML(calc, periodo, costos, cotizacion, extrasMes, lav
       <div class="ing-limp-card">
         <div class="ing-limp-h">🧽 Limpieza: cobrado vs. gasto</div>
         <div class="ing-limp-row"><span>Tarifa cobrada a huéspedes</span><span>${usd(limpCobrada)}</span></div>
-        <div class="ing-limp-sub">Airbnb ${usd(limpCobAir)} (real) · Booking ${usd(limpCobBkg)} (estimado, no lo informa)</div>
+        <div class="ing-limp-sub">Airbnb host directo ${usd(limpAirReal)} (real) · Airbnb co-anfitrión ${usd(limpAirEst)} + Booking ${usd(limpBkgEst)} (estimado 30/res, no lo informan)</div>
         ${conCosto ? `
           <div class="ing-limp-row"><span>Gasto de limpieza (a las chicas)</span><span>${usd(limpGasto)}</span></div>
           <div class="ing-limp-row dif ${limpDif >= 0 ? "pos" : "neg"}"><span>${limpDif >= 0 ? "Te sobra" : "Te falta"}</span><span>${limpDif >= 0 ? "+" : ""}${usd(limpDif)}</span></div>`
