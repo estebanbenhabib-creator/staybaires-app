@@ -2075,6 +2075,14 @@ function ingresosResultadoHTML(calc, periodo, costos, cotizacion, extrasMes, lav
     ["Supermercado", c.supermercado],
     ["Otros", c.otros],
   ].filter(([, v]) => v > 0);
+  // Limpieza: tarifa COBRADA al huésped (Airbnb real + Booking estimado) vs.
+  // GASTO real de limpieza (lo que se le paga a las chicas, de Pagos).
+  const limpCobAir = calc.totales.limpiezaCobradaAirbnb || 0;
+  const limpCobBkg = calc.totales.limpiezaCobradaBooking || 0;
+  const limpCobrada = Math.round((limpCobAir + limpCobBkg) * 100) / 100;
+  const limpGasto = conCosto ? toUsd(c.limpiezas) : 0;
+  const limpDif = Math.round((limpCobrada - limpGasto) * 100) / 100;
+  const mostrarLimp = limpCobrada > 0 || limpGasto > 0;
   return `
     <div class="ing-totales">
       <div class="ing-kpi vos"><span class="lbl">Ganás vos${conCosto ? " (neto)" : ""}</span><span class="val">${usd(conCosto ? netoFinal : t.vos)}</span></div>
@@ -2091,6 +2099,16 @@ function ingresosResultadoHTML(calc, periodo, costos, cotizacion, extrasMes, lav
         ${conceptoItems.length ? `<div class="ing-dl-concepto">${conceptoItems.map(([n, v]) => `${n} ${usd(toUsd(v))}`).join(" · ")}</div>` : ""}
         <div class="ing-dl-row neg"><span>− Lavandería del mes</span><span>${usd(lavUsd || 0)}</span></div>
         <div class="ing-dl-row total"><span>Tu neto</span><span>${usd(netoFinal)}</span></div>
+      </div>` : ""}
+    ${mostrarLimp ? `
+      <div class="ing-limp-card">
+        <div class="ing-limp-h">🧽 Limpieza: cobrado vs. gasto</div>
+        <div class="ing-limp-row"><span>Tarifa cobrada a huéspedes</span><span>${usd(limpCobrada)}</span></div>
+        <div class="ing-limp-sub">Airbnb ${usd(limpCobAir)} (real) · Booking ${usd(limpCobBkg)} (estimado, no lo informa)</div>
+        ${conCosto ? `
+          <div class="ing-limp-row"><span>Gasto de limpieza (a las chicas)</span><span>${usd(limpGasto)}</span></div>
+          <div class="ing-limp-row dif ${limpDif >= 0 ? "pos" : "neg"}"><span>${limpDif >= 0 ? "Te sobra" : "Te falta"}</span><span>${limpDif >= 0 ? "+" : ""}${usd(limpDif)}</span></div>`
+          : `<div class="ing-limp-sub">Cargá la cotización para ver el gasto y la diferencia.</div>`}
       </div>` : ""}
     <div class="ing-tabla-wrap">
       <table class="ing-tabla">

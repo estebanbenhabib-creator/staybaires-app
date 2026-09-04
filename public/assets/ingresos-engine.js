@@ -275,14 +275,27 @@
     }
     const grupos = agrupar(reservas);
     const totales = reservas.reduce(
-      (a, r) => { a.ingreso += r.ingreso; a.vos += r.vos; a.dueno += r.dueno; a.costoLimpieza += r.costoLimpieza; a.neto += r.neto; return a; },
-      { ingreso: 0, vos: 0, dueno: 0, costoLimpieza: 0, neto: 0, n: reservas.length }
+      (a, r) => {
+        a.ingreso += r.ingreso;
+        a.vos += r.vos;
+        a.dueno += r.dueno;
+        a.costoLimpieza += r.costoLimpieza;
+        a.neto += r.neto;
+        // Tarifa de limpieza COBRADA al huésped: Airbnb la trae por reserva; el
+        // export de Booking no, así que se estima con la fija (cfg.limpiezaBooking).
+        if (r.plataforma === "airbnb") a.limpiezaCobradaAirbnb += Number(r.limpieza) || 0;
+        else if (r.plataforma === "booking") a.limpiezaCobradaBooking += cfg.limpiezaBooking || 0;
+        return a;
+      },
+      { ingreso: 0, vos: 0, dueno: 0, costoLimpieza: 0, neto: 0, n: reservas.length, limpiezaCobradaAirbnb: 0, limpiezaCobradaBooking: 0 }
     );
     totales.ingreso = round2(totales.ingreso);
     totales.vos = round2(totales.vos);
     totales.dueno = round2(totales.dueno);
     totales.costoLimpieza = round2(totales.costoLimpieza);
     totales.neto = round2(totales.neto);
+    totales.limpiezaCobradaAirbnb = round2(totales.limpiezaCobradaAirbnb);
+    totales.limpiezaCobradaBooking = round2(totales.limpiezaCobradaBooking);
     const sinAsociar = grupos.filter((g) => !g.asociado);
     return { reservas, grupos, totales, sinAsociar, unidades: unidadesDetectadas(reservasCrudas || []) };
   }
