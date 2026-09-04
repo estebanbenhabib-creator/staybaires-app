@@ -2081,9 +2081,10 @@ function ingresosResultadoHTML(calc, periodo, costos, cotizacion, extrasMes, lav
   const limpAirReal = calc.totales.limpiezaAirbnbReal || 0;
   const limpAirEst = calc.totales.limpiezaAirbnbEst || 0;
   const limpBkgEst = calc.totales.limpiezaBookingEst || 0;
-  const limpEstTotal = Math.round((limpAirEst + limpBkgEst) * 100) / 100;
   const limpCobrada = Math.round((limpAirReal + limpAirEst + limpBkgEst) * 100) / 100;
-  const limpGasto = conCosto ? toUsd(c.limpiezas) : 0;
+  // Gasto de limpieza = TODO lo que sale por la operación: pago a colaboradoras
+  // (limpiezas + viáticos + plus + supermercado + otros) + lavandería.
+  const limpGasto = conCosto ? Math.round((costUsd + (lavUsd || 0)) * 100) / 100 : 0;
   const limpDif = Math.round((limpCobrada - limpGasto) * 100) / 100;
   const mostrarLimp = limpCobrada > 0 || limpGasto > 0;
   return `
@@ -2109,7 +2110,8 @@ function ingresosResultadoHTML(calc, periodo, costos, cotizacion, extrasMes, lav
         <div class="ing-limp-row"><span>Tarifa cobrada a huéspedes</span><span>${usd(limpCobrada)}</span></div>
         <div class="ing-limp-sub">Airbnb host directo ${usd(limpAirReal)} (real) · Airbnb co-anfitrión ${usd(limpAirEst)} + Booking ${usd(limpBkgEst)} (estimado 30/res, no lo informan)</div>
         ${conCosto ? `
-          <div class="ing-limp-row"><span>Gasto de limpieza (a las chicas)</span><span>${usd(limpGasto)}</span></div>
+          <div class="ing-limp-row"><span>Gasto de limpieza total</span><span>${usd(limpGasto)}</span></div>
+          <div class="ing-limp-sub">Pago a colaboradoras ${usd(costUsd)} (limpiezas · viáticos · plus · supermercado · otros) + lavandería ${usd(lavUsd || 0)}</div>
           <div class="ing-limp-row dif ${limpDif >= 0 ? "pos" : "neg"}"><span>${limpDif >= 0 ? "Te sobra" : "Te falta"}</span><span>${limpDif >= 0 ? "+" : ""}${usd(limpDif)}</span></div>`
           : `<div class="ing-limp-sub">Cargá la cotización para ver el gasto y la diferencia.</div>`}
       </div>` : ""}
@@ -2157,6 +2159,24 @@ async function renderIngresosConfig(guardados, cfg) {
     `<option value="">— sin asignar —</option>` +
     props.map((p) => `<option value="${p.codigo}" ${p.codigo === sel ? "selected" : ""}>${p.direccion || p.nombre}</option>`).join("");
 
+  // Tarifa de limpieza estimada por depto (para co-anfitrión / Booking).
+  const estMap = cfg.limpiezaEstimada || {};
+  const estDefault = cfg.limpiezaBooking || 30;
+  const codigosMapeados = [...new Set(Object.values(mapeo).map((m) => m && m.codigo).filter(Boolean))];
+  codigosMapeados.sort((a, b) => {
+    const pa = props.find((p) => p.codigo === a);
+    const pb = props.find((p) => p.codigo === b);
+    return String(pa ? pa.direccion || pa.nombre : a).localeCompare(String(pb ? pb.direccion || pb.nombre : b));
+  });
+  const filaEstHTML = (cod) => {
+    const p = props.find((x) => x.codigo === cod);
+    return `<div class="ing-est-row" data-est-cod="${cod}">
+      <span class="ing-est-nom">${p ? p.direccion || p.nombre : cod}</span>
+      <input class="ing-est-monto" type="number" inputmode="numeric" placeholder="${estDefault}" value="${estMap[cod] != null ? estMap[cod] : ""}" />
+      <span class="ing-est-u">USD/res</span>
+    </div>`;
+  };
+
   const fijas = cfg.rentasFijas || [];
   const filaFijaHTML = (f) => `
     <div class="ing-fija-row">
@@ -2191,6 +2211,10 @@ async function renderIngresosConfig(guardados, cfg) {
     <div class="ab-sub">Rentas fijas mensuales (inquilino de largo plazo, no vienen de Airbnb/Booking). Se suman a cada mes. <b>Propio</b> = ganás el 100%; <b>Comisión</b> = ganás el % del alquiler y el resto va al dueño. Todo en USD.</div>
     <div id="ing-fijas">${fijas.map(filaFijaHTML).join("")}</div>
     <button class="link-edit" data-add-fija>+ Agregar larga estadía</button>
+
+    <h2 class="ing-cfg-h2">Tarifa de limpieza estimada</h2>
+    <div class="ab-sub">Para las reservas donde la plataforma NO informa la tarifa de limpieza (co-anfitrión de Airbnb y Booking) se usa este valor por depto en el bloque "cobrado vs. gasto". Vacío = usa la fija (${estDefault} USD).</div>
+    <div id="ing-est">${codigosMapeados.length ? codigosMapeados.map(filaEstHTML).join("") : `<div class="empty-state">Asociá anuncios a deptos primero.</div>`}</div>
 
     <div class="ing-cfg-actions">
       <button class="btn-secondary" data-ing-volver>Volver</button>
@@ -2236,8 +2260,14 @@ async function renderIngresosConfig(guardados, cfg) {
         activo: true,
       });
     });
+    const nuevaEst = {};
+    document.querySelectorAll(".ing-est-row").forEach((row) => {
+      const cod = row.getAttribute("data-est-cod");
+      const v = row.querySelector(".ing-est-monto").value;
+      if (v !== "" && Number(v) > 0) nuevaEst[cod] = Number(v);
+    });
     try {
-      await fetchJSON(`${API}/ingresos-config`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mapeo: nuevoMapeo, rentasFijas: nuevasFijas }) });
+      await fetchJSON(`${API}/ingresos-config`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mapeo: nuevoMapeo, rentasFijas: nuevasFijas, limpiezaEstimada: nuevaEst }) });
       INGRESOS_VIEW = "resumen";
       toast("Guardado");
       renderIngresos();

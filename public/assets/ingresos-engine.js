@@ -285,12 +285,13 @@
         // SOLO en las "host directo"; en las co-anfitrión la mete dentro del
         // Monto pero no la separa, y Booking tampoco la informa. En esos dos
         // casos se estima con la fija (cfg.limpiezaBooking).
+        const estFee = cfg.limpiezaEstimada && cfg.limpiezaEstimada[r.codigo] != null ? Number(cfg.limpiezaEstimada[r.codigo]) || 0 : cfg.limpiezaBooking || 0;
         if (r.plataforma === "airbnb") {
           const lf = Number(r.limpieza) || 0;
           if (lf > 0) a.limpiezaAirbnbReal += lf;
-          else if (r.tipoAirbnb === "coanfitrion") a.limpiezaAirbnbEst += cfg.limpiezaBooking || 0;
+          else if (r.tipoAirbnb === "coanfitrion") a.limpiezaAirbnbEst += estFee;
         } else if (r.plataforma === "booking") {
-          a.limpiezaBookingEst += cfg.limpiezaBooking || 0;
+          a.limpiezaBookingEst += estFee;
         }
         return a;
       },
