@@ -24,8 +24,32 @@
   <script src="/assets/app.js"></script>
   <script>
     if ("serviceWorker" in navigator) {
-      window.addEventListener("load", () => {
-        navigator.serviceWorker.register("/sw.js").catch(() => {});
+      // Si ya había un SW controlando la página y entra una versión nueva,
+      // recargamos una sola vez para que se vean los cambios sin tener que
+      // reinstalar la app (clave en PWA de iOS, que "congela" el código viejo).
+      var sbReloading = false;
+      if (navigator.serviceWorker.controller) {
+        navigator.serviceWorker.addEventListener("controllerchange", function () {
+          if (sbReloading) return;
+          sbReloading = true;
+          window.location.reload();
+        });
+      }
+      window.addEventListener("load", function () {
+        navigator.serviceWorker.register("/sw.js").then(function (reg) {
+          // Buscar una versión más nueva cada vez que se abre la app.
+          reg.update();
+          reg.addEventListener("updatefound", function () {
+            var nw = reg.installing;
+            if (!nw) return;
+            nw.addEventListener("statechange", function () {
+              // Versión nueva lista y ya había una anterior -> activarla.
+              if (nw.state === "installed" && navigator.serviceWorker.controller) {
+                nw.postMessage({ type: "SKIP_WAITING" });
+              }
+            });
+          });
+        }).catch(function () {});
       });
     }
   </script>

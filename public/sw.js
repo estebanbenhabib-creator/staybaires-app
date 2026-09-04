@@ -6,7 +6,7 @@
 // guarda en cache; si no hay red, cae a lo ultimo cacheado. Los datos (/api/*)
 // nunca pasan por el SW: van directo a la red.
 
-const CACHE = "staybaires-v2";
+const CACHE = "staybaires-v3";
 const SHELL = [
   "/",
   "/index.html",
@@ -20,6 +20,11 @@ const SHELL = [
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));
+});
+
+// El cliente puede pedir que la versión nueva tome control ya mismo.
+self.addEventListener("message", (event) => {
+  if (event.data && event.data.type === "SKIP_WAITING") self.skipWaiting();
 });
 
 self.addEventListener("activate", (event) => {
