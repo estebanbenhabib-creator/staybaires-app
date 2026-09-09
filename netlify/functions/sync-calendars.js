@@ -57,6 +57,40 @@ async function runSync() {
       idsCheckins.add(checkin.id);
     }
   }
+  // Extensiones huérfanas: un check-out que se movió a una fecha posterior con
+  // "Cambiar día" (override.fecha), pero cuya reserva ya se cayó del feed de
+  // iCal, dejaría de generarse y la limpieza desaparecería. Si esa fecha movida
+  // es hoy o futura y la tarea no está hecha ni ya presente, la reponemos.
+  for (const [id, ov] of Object.entries(overrides)) {
+    if (!ov || !ov.fecha) continue; // solo las que se movieron de día
+    if (id.includes("_checkin_") || id.startsWith("manual_")) continue; // solo check-outs de depto
+    if (idsTasks.has(id)) continue; // ya la generó el feed (con el override aplicado)
+    if (ov.status === "hecha") continue; // ya resuelta
+    if (ov.fecha < hoyAR) continue; // solo hoy/futuro, para no revivir extensiones viejas
+    const us = id.indexOf("_");
+    if (us <= 0) continue;
+    const codigo = id.slice(0, us);
+    const prop = properties.find((p) => p.codigo === codigo);
+    if (!prop) continue;
+    tasks.push({
+      id,
+      propertyCode: codigo,
+      propertyName: prop.nombre,
+      barrio: prop.barrio,
+      direccion: prop.direccion || "",
+      date: ov.fecha,
+      fechaOriginal: id.slice(us + 1),
+      platform: "directo",
+      type: "checkout",
+      origen: "extension",
+      status: ov.status || "pendiente",
+      assignedTo: ov.assignedTo || null,
+      assignedName: ov.assignedName || null,
+      notes: ov.notes || "Extensión · la reserva ya no está en el calendario",
+    });
+    idsTasks.add(id);
+  }
+
   tasks.sort((a, b) => a.date.localeCompare(b.date));
   checkins.sort((a, b) => a.date.localeCompare(b.date));
 
