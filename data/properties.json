@@ -238,5 +238,25 @@
     "icalAirbnb": "https://www.airbnb.com.ar/calendar/ical/1740834321434397252.ics?t=8bb476fb4a604201816e721f23c026dd",
     "icalBooking": null,
     "icalVrbo": null
+  },
+  {
+    "codigo": "1131",
+    "nombre": "Raul depto Dorrego",
+    "barrio": "Palermo",
+    "direccion": "Dorrego 1623, piso 7 depto 02",
+    "tarifaLimpiezaUSD": 40,
+    "icalAirbnb": "https://www.airbnb.com.ar/calendar/ical/1757301194436343418.ics?t=711f5358eb454c15aea33a6950f42061",
+    "icalBooking": null,
+    "icalVrbo": null
+  },
+  {
+    "codigo": "1132",
+    "nombre": "Anni Depto",
+    "barrio": "Almagro",
+    "direccion": "Gallo 414, piso 8 depto D",
+    "tarifaLimpiezaUSD": 40,
+    "icalAirbnb": "https://www.airbnb.com.ar/calendar/ical/1766257876933512665.ics?t=b61b4e34183143ada902869ca28c915e",
+    "icalBooking": null,
+    "icalVrbo": null
   }
 ]
