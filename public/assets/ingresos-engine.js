@@ -139,12 +139,17 @@
       modalidad = "manual_tercero";
     } else if (r.plataforma === "airbnb") {
       ingreso = r.deposito;
-      const propio = m ? !!m.propio : contieneAlguna(r.unidad, cfg.propioAirbnb);
+      let propio = m ? !!m.propio : contieneAlguna(r.unidad, cfg.propioAirbnb);
       // "Dueño cobra por Airbnb": anuncio donde el propietario está como
       // co-anfitrión y cobra directo de Airbnb, aunque en TU export figure como
       // "Reserva" (vos sos el anfitrión principal). Tu Monto ya es solo tu
       // comisión + limpieza, así que se reparte igual que co-anfitrión.
-      const duenoCobraAirbnb = m ? !!m.coanf : false;
+      let duenoCobraAirbnb = m ? !!m.coanf : false;
+      // El esquema por depto (código) manda sobre las marcas por anuncio.
+      const esquema = codigo && cfg.repartoDepto ? cfg.repartoDepto[codigo] : null;
+      if (esquema === "propio") { propio = true; duenoCobraAirbnb = false; }
+      else if (esquema === "coanfitrion") { propio = false; duenoCobraAirbnb = true; }
+      else if (esquema === "tercero") { propio = false; duenoCobraAirbnb = false; }
       if (r.tipoAirbnb === "coanfitrion" || (!propio && duenoCobraAirbnb)) {
         modalidad = "coanfitrion";
         vos = r.deposito;
@@ -160,7 +165,12 @@
       }
     } else {
       ingreso = r.total;
-      const propio = m ? !!m.propio : contieneAlguna(r.unidad + " " + (r.location || ""), cfg.propioBooking);
+      let propio = m ? !!m.propio : contieneAlguna(r.unidad + " " + (r.location || ""), cfg.propioBooking);
+      // El esquema por depto manda: "propio" -> 100% Esteban; cualquier otro
+      // (coanfitrion/tercero) en Booking se cobra y se le paga al dueño (tercero).
+      const esquema = codigo && cfg.repartoDepto ? cfg.repartoDepto[codigo] : null;
+      if (esquema === "propio") propio = true;
+      else if (esquema) propio = false;
       const saldo = r.total - r.comision;
       if (propio) {
         modalidad = "propio";

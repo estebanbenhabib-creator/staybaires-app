@@ -7,7 +7,7 @@
 
 const { getJSON, setJSON } = require("../lib/store");
 
-const DEFAULT = { mapeo: {}, limpiezaBooking: 30, cotizacion: 0, rentasFijas: [], limpiezaEstimada: {} };
+const DEFAULT = { mapeo: {}, limpiezaBooking: 30, cotizacion: 0, rentasFijas: [], limpiezaEstimada: {}, repartoDepto: {} };
 
 function json(code, obj) {
   return { statusCode: code, headers: { "Content-Type": "application/json" }, body: JSON.stringify(obj) };
@@ -36,6 +36,9 @@ exports.handler = async (event) => {
       // Tarifa de limpieza estimada por depto (co-anfitrión y Booking, que no la
       // informan). { [codigo]: montoUSD }. Si un depto no está, se usa limpiezaBooking.
       limpiezaEstimada: body.limpiezaEstimada && typeof body.limpiezaEstimada === "object" ? body.limpiezaEstimada : prev.limpiezaEstimada || {},
+      // Esquema de reparto por depto (código): "coanfitrion" | "propio" | "tercero".
+      // Es la fuente de verdad; el motor lo usa por encima de las marcas por anuncio.
+      repartoDepto: body.repartoDepto && typeof body.repartoDepto === "object" ? body.repartoDepto : prev.repartoDepto || {},
     };
     await setJSON("ingresos-config", next);
     return json(200, { ok: true, config: next });

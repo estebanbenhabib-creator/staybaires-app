@@ -2179,21 +2179,22 @@ async function renderIngresosConfig(guardados, cfg) {
     `<option value="">— sin asignar —</option>` +
     props.map((p) => `<option value="${p.codigo}" ${p.codigo === sel ? "selected" : ""}>${p.direccion || p.nombre}</option>`).join("");
 
-  // Tarifa de limpieza estimada por depto (para co-anfitrión / Booking).
+  // Reparto y limpieza POR DEPTO (fuente de verdad del esquema; manda sobre las
+  // marcas por anuncio). Se listan todas las propiedades para poder dejar
+  // configurado un depto nuevo aunque todavía no tenga reservas importadas.
   const estMap = cfg.limpiezaEstimada || {};
+  const repMap = cfg.repartoDepto || {};
   const estDefault = cfg.limpiezaBooking || 30;
-  const codigosMapeados = [...new Set(Object.values(mapeo).map((m) => m && m.codigo).filter(Boolean))];
-  codigosMapeados.sort((a, b) => {
-    const pa = props.find((p) => p.codigo === a);
-    const pb = props.find((p) => p.codigo === b);
-    return String(pa ? pa.direccion || pa.nombre : a).localeCompare(String(pb ? pb.direccion || pb.nombre : b));
-  });
-  const filaEstHTML = (cod) => {
-    const p = props.find((x) => x.codigo === cod);
+  const propsOrden = props.slice().sort((a, b) => String(a.direccion || a.nombre).localeCompare(String(b.direccion || b.nombre)));
+  const filaEstHTML = (p) => {
+    const cod = p.codigo;
+    const tipo = repMap[cod] || "";
+    const opt = (v, lbl) => `<option value="${v}" ${tipo === v ? "selected" : ""}>${lbl}</option>`;
     return `<div class="ing-est-row" data-est-cod="${cod}">
-      <span class="ing-est-nom">${p ? p.direccion || p.nombre : cod}</span>
+      <span class="ing-est-nom">${p.direccion || p.nombre}${p.nombre && p.direccion ? ` <span class="ing-est-sub">${p.nombre}</span>` : ""}</span>
+      <select class="ing-est-tipo">${opt("", "— (según anuncio)")}${opt("coanfitrion", "Dueño cobra x Airbnb")}${opt("propio", "Propio")}${opt("tercero", "Yo le pago al dueño")}</select>
       <input class="ing-est-monto" type="number" inputmode="numeric" placeholder="${estDefault}" value="${estMap[cod] != null ? estMap[cod] : ""}" />
-      <span class="ing-est-u">USD/res</span>
+      <span class="ing-est-u">USD limp.</span>
     </div>`;
   };
 
@@ -2233,9 +2234,9 @@ async function renderIngresosConfig(guardados, cfg) {
     <div id="ing-fijas">${fijas.map(filaFijaHTML).join("")}</div>
     <button class="link-edit" data-add-fija>+ Agregar larga estadía</button>
 
-    <h2 class="ing-cfg-h2">Tarifa de limpieza estimada</h2>
-    <div class="ab-sub">Para las reservas donde la plataforma NO informa la tarifa de limpieza (co-anfitrión de Airbnb y Booking) se usa este valor por depto en el bloque "cobrado vs. gasto". Vacío = usa la fija (${estDefault} USD).</div>
-    <div id="ing-est">${codigosMapeados.length ? codigosMapeados.map(filaEstHTML).join("") : `<div class="empty-state">Asociá anuncios a deptos primero.</div>`}</div>
+    <h2 class="ing-cfg-h2">Reparto y limpieza por depto</h2>
+    <div class="ab-sub">El esquema de cada depto manda sobre las marcas por anuncio. <b>Dueño cobra x Airbnb</b> = co-anfitrión (el dueño cobra directo, vos 15% + limpieza). <b>Propio</b> = 100% tuyo. <b>Yo le pago al dueño</b> = recibís todo y le girás. La limpieza (USD) se usa cuando la plataforma no la informa; vacía usa la fija (${estDefault}).</div>
+    <div id="ing-est">${propsOrden.map(filaEstHTML).join("")}</div>
 
     <div class="ing-cfg-actions">
       <button class="btn-secondary" data-ing-volver>Volver</button>
@@ -2283,13 +2284,16 @@ async function renderIngresosConfig(guardados, cfg) {
       });
     });
     const nuevaEst = {};
+    const nuevoReparto = {};
     document.querySelectorAll(".ing-est-row").forEach((row) => {
       const cod = row.getAttribute("data-est-cod");
       const v = row.querySelector(".ing-est-monto").value;
       if (v !== "" && Number(v) > 0) nuevaEst[cod] = Number(v);
+      const tipo = row.querySelector(".ing-est-tipo").value;
+      if (tipo) nuevoReparto[cod] = tipo;
     });
     try {
-      await fetchJSON(`${API}/ingresos-config`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mapeo: nuevoMapeo, rentasFijas: nuevasFijas, limpiezaEstimada: nuevaEst }) });
+      await fetchJSON(`${API}/ingresos-config`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mapeo: nuevoMapeo, rentasFijas: nuevasFijas, limpiezaEstimada: nuevaEst, repartoDepto: nuevoReparto }) });
       INGRESOS_VIEW = "resumen";
       toast("Guardado");
       renderIngresos();

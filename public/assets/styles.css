@@ -516,8 +516,10 @@ main {
 .ing-fija-monto { grid-area: monto; }
 .ing-fija-pct { grid-area: pct; }
 .ing-fija-row select, .ing-fija-row input { border: 1px solid var(--border); border-radius: var(--radius); padding: 8px 10px; font-size: 13px; background: var(--surface); width: 100%; box-sizing: border-box; }
-.ing-est-row { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--border); }
-.ing-est-nom { flex: 1; font-size: 13px; color: var(--text); }
+.ing-est-row { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--border); }
+.ing-est-nom { flex: 1 1 100%; font-size: 13px; font-weight: 600; color: var(--text); }
+.ing-est-sub { color: var(--text-muted); font-weight: 400; }
+.ing-est-tipo { flex: 1; min-width: 140px; border: 1px solid var(--border); border-radius: var(--radius); padding: 6px 8px; font-size: 13px; background: var(--surface); }
 .ing-est-monto { width: 72px; border: 1px solid var(--border); border-radius: var(--radius); padding: 6px 8px; font-size: 13px; background: var(--surface); text-align: right; }
 .ing-est-u { font-size: 12px; color: var(--text-muted); }
 .ing-fija-del { grid-area: del; justify-self: end; border: none; background: none; color: var(--coral-fg); font-size: 15px; cursor: pointer; padding: 2px 8px; }
