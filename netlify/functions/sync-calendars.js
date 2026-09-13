@@ -59,14 +59,17 @@ async function runSync() {
   }
   // Extensiones huérfanas: un check-out que se movió a una fecha posterior con
   // "Cambiar día" (override.fecha), pero cuya reserva ya se cayó del feed de
-  // iCal, dejaría de generarse y la limpieza desaparecería. Si esa fecha movida
-  // es hoy o futura y la tarea no está hecha ni ya presente, la reponemos.
+  // iCal, dejaría de generarse y la limpieza desaparecería. La reponemos si su
+  // fecha movida cae dentro de una ventana (últimos días + futuro), esté hecha o
+  // no. NO se saltea la hecha (una extensión ya limpiada igual tiene que verse,
+  // en verde) y la ventana da margen para no perderla en el borde del día por el
+  // huso horario del server.
+  const limiteExt = new Date(Date.now() - 3 * 3600 * 1000 - 4 * 86400000).toISOString().slice(0, 10);
   for (const [id, ov] of Object.entries(overrides)) {
     if (!ov || !ov.fecha) continue; // solo las que se movieron de día
     if (id.includes("_checkin_") || id.startsWith("manual_")) continue; // solo check-outs de depto
     if (idsTasks.has(id)) continue; // ya la generó el feed (con el override aplicado)
-    if (ov.status === "hecha") continue; // ya resuelta
-    if (ov.fecha < hoyAR) continue; // solo hoy/futuro, para no revivir extensiones viejas
+    if (ov.fecha < limiteExt) continue; // ventana: no revivir extensiones viejas
     const us = id.indexOf("_");
     if (us <= 0) continue;
     const codigo = id.slice(0, us);
