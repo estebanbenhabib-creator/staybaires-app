@@ -259,7 +259,13 @@ function consolidarBooking(properties, icsResultsByCode, estadiasPrev = {}, hoy 
         // puede tener un bloque fusionado mas largo que corre el check-in al
         // pasado y lo esconde (aunque el checkout si se muestre).
         if (match.checkin < checkin && (!hoy || checkin <= hoy)) checkin = match.checkin;
-        if (match.checkout > checkout) checkout = match.checkout; // por si extendio
+        // NO extendemos el checkout desde la memoria: Booking no corre el DTEND,
+        // así que la salida del feed es confiable. Extenderla desde la memoria
+        // rompía en deptos Airbnb+Booking, donde la memoria puede tener un bloque
+        // fusionado más largo (ej. real 13→15 + espejo → 13→17) que corría la
+        // salida y hacía DESAPARECER el check-out real. Una extensión real ya
+        // viene con el DTEND nuevo en el feed. La recuperación de reservas caídas
+        // del feed (checkout reciente) usa la memoria aparte, más abajo.
       }
       consolidadas.push({ checkin, checkout, conocida: !!match });
     }
