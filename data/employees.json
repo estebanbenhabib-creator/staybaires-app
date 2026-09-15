@@ -29,6 +29,15 @@
           "notas": "Tercera opcion / refuerzo cuando Susana y Mari no dan abasto."
     },
     {
+          "id": "sofia",
+          "nombre": "Sofía",
+          "rol": "empleada",
+          "jerarquia": "rotativa",
+          "ordenAsignacion": 4,
+          "tarifaPorDia": 5000,
+          "notas": "Refuerzo / rotativa. Sin login por ahora."
+    },
+    {
           "id": "lujan",
           "nombre": "Lujan",
           "rol": "lavanderia",
