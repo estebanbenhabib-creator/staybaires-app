@@ -375,8 +375,20 @@ function buildRecordatorioLimpieza(empId, dateISO, payload) {
 // no, abre WhatsApp para elegir el contacto a mano.
 function abrirWhatsapp(tel, msg) {
   const t = (tel || "").replace(/\D/g, "");
-  const url = t ? `https://wa.me/${t}?text=${encodeURIComponent(msg)}` : `https://wa.me/?text=${encodeURIComponent(msg)}`;
-  window.open(url, "_blank");
+  if (t) {
+    window.open(`https://wa.me/${t}?text=${encodeURIComponent(msg)}`, "_blank");
+    return;
+  }
+  // Sin teléfono cargado: el camino "elegir contacto" de WhatsApp no siempre
+  // arrastra el texto. Lo copiamos al portapapeles para que no se pierda y
+  // avisamos, además de abrir WhatsApp igual.
+  try {
+    navigator.clipboard.writeText(msg);
+    toast("Sin teléfono cargado: copié el mensaje, pegalo en WhatsApp");
+  } catch (e) {
+    toast("Cargá el teléfono en Pagos → Ajustes para enviarlo directo");
+  }
+  window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, "_blank");
 }
 
 // Bloque de botones "Enviar por WhatsApp" para un día. Vacío si no hay check-outs.
