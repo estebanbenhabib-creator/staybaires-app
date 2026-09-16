@@ -1473,6 +1473,7 @@ async function renderPagosAjustes() {
         };
         try {
           await fetchJSON(`${API}/pay-config`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+          CACHE.telefonos = null; // que los envíos de WhatsApp tomen los teléfonos recién guardados
           toast("Ajustes guardados");
           PAGOS_VIEW = "liquidacion";
           renderPagos();
