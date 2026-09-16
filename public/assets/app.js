@@ -415,7 +415,7 @@ async function attachWaHandlers(payload) {
   if (!nodes.length) return;
   const tels = await getTelefonos();
   document.querySelectorAll("[data-wa-lav]").forEach((b) => {
-    b.onclick = () => abrirWhatsapp(tels["lujan"], buildRutaLavanderia(b.getAttribute("data-wa-lav"), payload));
+    b.onclick = () => abrirWhatsapp(tels["ruta_lavanderia"] || "5491130171397", buildRutaLavanderia(b.getAttribute("data-wa-lav"), payload));
   });
   document.querySelectorAll("[data-wa-limp]").forEach((b) => {
     b.onclick = () => {
@@ -1419,6 +1419,8 @@ async function renderPagosAjustes() {
               <input type="tel" data-tel="${e.id}" value="${(cfg.telefonos && cfg.telefonos[e.id]) || ""}" placeholder="Ej: 5491130171397" />`
             )
             .join("")}
+          <label class="aj-label">Ruta de lavandería (a quién se le manda)</label>
+          <input type="tel" data-tel="ruta_lavanderia" value="${(cfg.telefonos && cfg.telefonos["ruta_lavanderia"]) || "+5491130171397"}" placeholder="Ej: 5491130171397" />
         </div>
 
         <p class="section-label">Feriados</p>
