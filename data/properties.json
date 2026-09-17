@@ -258,5 +258,25 @@
     "icalAirbnb": "https://www.airbnb.com.ar/calendar/ical/1766257876933512665.ics?t=b61b4e34183143ada902869ca28c915e",
     "icalBooking": null,
     "icalVrbo": null
+  },
+  {
+    "codigo": "1133",
+    "nombre": "Carla Depto",
+    "barrio": "Palermo",
+    "direccion": "Pje. Virasoro 2354, piso 6 depto B",
+    "tarifaLimpiezaUSD": 40,
+    "icalAirbnb": "https://www.airbnb.com.ar/calendar/ical/1767506289928851751.ics?t=dbc5cb2d2b9b4a4aaf6a204dc0b28455",
+    "icalBooking": null,
+    "icalVrbo": null
+  },
+  {
+    "codigo": "1134",
+    "nombre": "Nacho Depto",
+    "barrio": "Recoleta",
+    "direccion": "Azcuénaga 1853, piso 6 depto 2",
+    "tarifaLimpiezaUSD": 40,
+    "icalAirbnb": "https://www.airbnb.com.ar/calendar/ical/1758061289577886463.ics?t=28d42d48162242459508108e2329cc0e",
+    "icalBooking": null,
+    "icalVrbo": null
   }
 ]
