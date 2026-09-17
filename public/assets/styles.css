@@ -554,6 +554,13 @@ main {
 .ing-cmp-btn { margin-top: 12px; width: 100%; }
 .cmp-overlay { position: fixed; inset: 0; background: var(--bg); z-index: 200; overflow-y: auto; }
 .cmp-bar { position: sticky; top: 0; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 16px; background: var(--surface); border-bottom: 1px solid var(--border); font-size: 13px; color: var(--text-secondary); }
+.prev-body { padding: 16px; max-width: 640px; margin: 0 auto; }
+.prev-dia { border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 12px; margin-bottom: 8px; }
+.prev-fecha { font-weight: 700; color: var(--navy); margin-bottom: 6px; text-transform: capitalize; }
+.prev-line { font-size: 14px; color: var(--text); padding: 3px 0; line-height: 1.4; }
+.prev-line b { font-weight: 700; }
+.prev-quien { color: var(--text-secondary); font-weight: 600; }
+.prev-vacio { color: var(--text-muted); font-size: 13px; }
 .comprobante { background: #fff; max-width: 640px; margin: 16px auto; padding: 28px; border: 1px solid var(--border); border-radius: 10px; }
 .cmp-logo { height: 54px; aspect-ratio: 145.13 / 62.97; background-color: var(--navy); -webkit-mask: url(/logo-mark.svg) left center / contain no-repeat; mask: url(/logo-mark.svg) left center / contain no-repeat; margin-bottom: 18px; }
 .cmp-title { font-size: 19px; font-weight: 700; color: var(--navy); }

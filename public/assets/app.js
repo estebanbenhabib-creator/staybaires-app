@@ -425,6 +425,77 @@ async function attachWaHandlers(payload) {
   });
 }
 
+// ---------- Previsión de la semana (próximos 7 días) ----------
+// Check-ins, check-outs/limpiezas y lavandería de los próximos 7 días, para ver
+// de un vistazo y mandarle el resumen a Esteban por WhatsApp.
+function previsionLabel(t) {
+  const dir = (t.direccion || t.propertyName || t.propertyCode || "").trim();
+  if (dir) return dir;
+  if (t.source === "manual") return t.tipo || t.notes || "Tarea";
+  return "";
+}
+
+function buildPrevisionSemana(payload, pedidos, hoy) {
+  const dias = [];
+  for (let i = 0; i < 7; i++) {
+    const f = isoPlusDays(hoy, i);
+    dias.push({
+      fecha: f,
+      ins: (payload.checkins || []).filter((c) => c.date === f),
+      outs: (payload.tasks || []).filter((t) => t.date === f && (t.type === "checkout" || t.source === "manual")),
+      lav: (pedidos || []).filter((p) => p.fecha === f),
+    });
+  }
+  return dias;
+}
+
+function previsionSemanaTexto(dias) {
+  const L = [`📋 *Previsión StayBaires*`, `${fmtDate(dias[0].fecha)} al ${fmtDate(dias[dias.length - 1].fecha)}`];
+  for (const d of dias) {
+    const parts = [];
+    if (d.ins.length) parts.push(`🟢 Entran: ${d.ins.map(previsionLabel).join(" · ")}`);
+    if (d.outs.length) parts.push(`🧼 Limpiezas: ${d.outs.map((t) => previsionLabel(t) + (t.assignedTo ? ` (${employeeName(t.assignedTo)})` : "")).join(" · ")}`);
+    if (d.lav.length) parts.push(`🧺 Lavandería: ${d.lav.map((p) => (p.tipo === "retiro" ? "Retirar" : "Entregar") + " " + (p.propertyName || "")).join(" · ")}`);
+    if (!parts.length) continue;
+    L.push(`\n📅 ${fmtDateHeader(d.fecha)}`);
+    parts.forEach((p) => L.push("  " + p));
+  }
+  if (L.length <= 2) L.push("\nSin movimientos en los próximos 7 días.");
+  return L.join("\n");
+}
+
+async function abrirPrevisionSemana() {
+  const payload = await getTasks();
+  let pedidos = [];
+  try {
+    pedidos = await fetchJSON(`${API}/lavanderia`);
+  } catch (e) {}
+  const dias = buildPrevisionSemana(payload, pedidos, todayISO());
+  const diaHTML = (d) => {
+    const filas = [];
+    if (d.ins.length) filas.push(`<div class="prev-line">🟢 <b>Entran:</b> ${d.ins.map(previsionLabel).join(" · ")}</div>`);
+    if (d.outs.length) filas.push(`<div class="prev-line">🧼 <b>Limpiezas:</b> ${d.outs.map((t) => previsionLabel(t) + (t.assignedTo ? ` <span class="prev-quien">(${employeeName(t.assignedTo)})</span>` : "")).join(" · ")}</div>`);
+    if (d.lav.length) filas.push(`<div class="prev-line">🧺 <b>Lavandería:</b> ${d.lav.map((p) => (p.tipo === "retiro" ? "Retirar" : "Entregar") + " " + (p.propertyName || "")).join(" · ")}</div>`);
+    return `<div class="prev-dia"><div class="prev-fecha">${fmtDateHeader(d.fecha)}</div>${filas.join("") || `<div class="prev-line prev-vacio">Sin movimientos</div>`}</div>`;
+  };
+  const overlay = document.createElement("div");
+  overlay.className = "cmp-overlay";
+  overlay.innerHTML = `
+    <div class="cmp-bar no-print">
+      <button class="btn-secondary" id="prev-cerrar">Cerrar</button>
+      <span>Próximos 7 días</span>
+      <button class="btn-primary" id="prev-wa">Enviar a Esteban</button>
+    </div>
+    <div class="prev-body">
+      <h1 class="ab-headline" style="margin:0 0 2px;">Previsión de la semana</h1>
+      <div class="ab-sub" style="margin-bottom:12px;">${fmtDate(dias[0].fecha)} al ${fmtDate(dias[dias.length - 1].fecha)}</div>
+      ${dias.map(diaHTML).join("")}
+    </div>`;
+  document.body.appendChild(overlay);
+  overlay.querySelector("#prev-cerrar").onclick = () => overlay.remove();
+  overlay.querySelector("#prev-wa").onclick = () => abrirWhatsapp("5491130171397", previsionSemanaTexto(dias));
+}
+
 async function renderHoy() {
   try {
     const hoy = todayISO();
@@ -891,13 +962,14 @@ async function renderCalendario() {
       </div>
       <h1 class="ab-headline">Calendario</h1>
       <div class="ab-sub">${syncInfo} · sync automático diario</div>
-      ${SESSION.role === "admin" ? `<div style="margin:14px 0 4px;"><button class="btn-primary" data-nueva-tarea>+ Nueva tarea</button></div>` : ""}
+      ${SESSION.role === "admin" ? `<div class="cal-acciones" style="margin:14px 0 4px; display:flex; flex-wrap:wrap; gap:8px;"><button class="btn-primary" data-nueva-tarea>+ Nueva tarea</button><button class="btn-secondary" data-prevision>📋 Previsión semana</button></div>` : ""}
       ${erroresHTML}
       ${body}
     `);
 
     if (SESSION.role === "admin") {
       document.querySelector("[data-nueva-tarea]").onclick = () => openNuevaTareaForm(renderCalendario);
+      document.querySelector("[data-prevision]").onclick = abrirPrevisionSemana;
     }
 
     document.querySelector("[data-refresh]").onclick = async () => {
