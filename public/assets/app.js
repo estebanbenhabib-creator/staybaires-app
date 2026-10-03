@@ -1985,7 +1985,7 @@ async function renderIngresos() {
         costosEnVivo = costos.totales.total > 0;
       } catch (e) {}
     }
-    const cfgCalc = Object.assign({}, cfg, { valorDepto: payCfg.valorDepto || {}, extras: extrasMes, cotizacion });
+    const cfgCalc = Object.assign({}, cfg, { valorDepto: payCfg.valorDepto || {}, extras: extrasMes, cotizacion, direcciones: (CONFIG.properties || []).map((p) => ({ codigo: p.codigo, direccion: p.direccion })) });
     // Reservas cargadas a mano del mes (no vienen en los exports).
     const manualesMes = (manuales || []).filter((x) => x.periodo === INGRESOS_MES);
     const reservasManuales = manualesMes.map((x) => ({ plataforma: "manual", codigo: x.codigo, inicio: x.inicio, fin: x.fin, huesped: x.huesped, total: x.total, limpieza: x.limpieza, comisionPct: x.comisionPct, manualId: x.id }));

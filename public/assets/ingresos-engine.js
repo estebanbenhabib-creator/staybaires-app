@@ -46,7 +46,41 @@
     // plataformas). Cada uno: { codigo, tipo: "propio"|"comision",
     // montoMensual, comisionPct, activo }. Se suman a cada mes.
     rentasFijas: [],
+    // Direcciones de los deptos [{codigo, direccion}] para asociar por dirección
+    // cuando Booking exporta el "Nombre del alojamiento" vacío (la "location" sí
+    // viene). Se pasa desde el cliente (CONFIG.properties).
+    direcciones: [],
   };
+
+  // Normaliza texto para comparar direcciones (sin acentos, minúsculas, solo
+  // letras/números separados por espacios).
+  function normalizarDir(s) {
+    return String(s || "")
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[̀-ͯ]/g, "")
+      .replace(/[^a-z0-9]+/g, " ")
+      .trim();
+  }
+
+  // Busca el código de depto cuya calle+número aparezca en la location de la
+  // reserva (para Booking con nombre vacío). Coincide si la location contiene el
+  // número de la dirección Y una palabra distintiva de la calle.
+  function codigoPorDireccion(location, direcciones) {
+    if (!location || !direcciones || !direcciones.length) return null;
+    const loc = normalizarDir(location);
+    if (!loc) return null;
+    for (const d of direcciones) {
+      if (!d || !d.direccion) continue;
+      const base = normalizarDir(String(d.direccion).split(",")[0]); // "dorrego 946"
+      const num = (base.match(/\d+/) || [])[0];
+      if (!num) continue;
+      const calle = base.replace(/\d+/g, "").trim();
+      const palabra = calle.split(" ").filter((w) => w.length >= 4)[0] || calle;
+      if (palabra && loc.indexOf(num) !== -1 && loc.indexOf(palabra) !== -1) return d.codigo;
+    }
+    return null;
+  }
 
   function num(v) {
     if (typeof v === "number") return isFinite(v) ? v : 0;
@@ -127,7 +161,9 @@
   // ---- REPARTO de una reserva cruda segun el mapeo ----
   function repartir(r, cfg) {
     const m = cfg.mapeo[r.unidad];
-    const codigo = r.codigo || (m && m.codigo ? m.codigo : null);
+    // Código: el explícito de la reserva, o el del mapeo por nombre, o —si el
+    // nombre vino vacío (típico de Booking)— por la dirección (location).
+    const codigo = r.codigo || (m && m.codigo ? m.codigo : null) || codigoPorDireccion(r.location, cfg.direcciones);
     let vos, dueno, modalidad, ingreso;
     if (r.plataforma === "manual") {
       // Reserva cargada a mano (no viene en los exports). Reparto tercero:
