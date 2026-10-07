@@ -278,5 +278,15 @@
     "icalAirbnb": "https://www.airbnb.com.ar/calendar/ical/1758061289577886463.ics?t=28d42d48162242459508108e2329cc0e",
     "icalBooking": null,
     "icalVrbo": null
+  },
+  {
+    "codigo": "1135",
+    "nombre": "Francisco Depto",
+    "barrio": "Palermo",
+    "direccion": "Arévalo 2768, piso 4 depto E",
+    "tarifaLimpiezaUSD": 40,
+    "icalAirbnb": "https://www.airbnb.com.ar/calendar/ical/948475476035170513.ics?t=4468d4ef542a4c5d8ea0a56711a3b451",
+    "icalBooking": null,
+    "icalVrbo": null
   }
 ]
