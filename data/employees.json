@@ -35,7 +35,8 @@
           "jerarquia": "rotativa",
           "ordenAsignacion": 4,
           "tarifaPorDia": 5000,
-          "notas": "Refuerzo / rotativa. Sin login por ahora."
+          "password": "sofia2026",
+          "notas": "Refuerzo / rotativa. Login para ver sus asignaciones."
     },
     {
           "id": "lujan",
