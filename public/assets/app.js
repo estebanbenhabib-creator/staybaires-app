@@ -4,11 +4,11 @@
 const API = "/api";
 const ICONS = {
   hoy: "🏠", calendario: "📅", tareas: "✅", empleadas: "👥", pagos: "💵",
-  insumos: "📦", lavanderia: "🧺", mispagos: "💵", ingresos: "📊",
+  insumos: "📦", mantenimiento: "🔧", lavanderia: "🧺", mispagos: "💵", ingresos: "📊",
 };
 const TITLES = {
   hoy: "Hoy", calendario: "Calendario", tareas: "Tareas", empleadas: "Colaboradores",
-  pagos: "Pagos", insumos: "Insumos", lavanderia: "Lavanderia", mispagos: "Mis pagos",
+  pagos: "Pagos", insumos: "Insumos", mantenimiento: "Mantenimiento", lavanderia: "Lavanderia", mispagos: "Mis pagos",
   ingresos: "Ingresos",
 };
 // Tipos de tarea que se cargan a mano (no vienen de los calendarios). Para
@@ -285,6 +285,7 @@ function renderTab(tab) {
     pagos: renderPagos,
     mispagos: renderMisPagos,
     insumos: renderInsumos,
+    mantenimiento: renderMantenimiento,
     lavanderia: renderLavanderia,
     ingresos: renderIngresos,
   };
@@ -2391,6 +2392,141 @@ async function renderIngresosConfig(guardados, cfg) {
 }
 
 // ---------- Lavanderia ----------
+
+// ---------- Mantenimiento (trabajos de Adrian + gastos, montos en ARS) ----------
+async function renderMantenimiento() {
+  try {
+    const items = await fetchJSON(`${API}/mantenimiento`);
+    const props = CONFIG.properties || [];
+    const fmt = (n) => "$" + Math.round(n || 0).toLocaleString("es-AR");
+    const esc = (s) => String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+    const pendientes = items.filter((i) => i.paga === "esteban" && !i.cobrado);
+    const totalPend = pendientes.reduce((s, i) => s + (Number(i.monto) || 0), 0);
+
+    const byDepto = new Map();
+    for (const it of items) {
+      if (!byDepto.has(it.propertyCode)) byDepto.set(it.propertyCode, { nombre: it.propertyName, direccion: it.direccion, items: [] });
+      byDepto.get(it.propertyCode).items.push(it);
+    }
+
+    const itemRow = (it) => {
+      const reclamo = it.paga === "esteban";
+      const quien = !reclamo
+        ? `<span style="color:#888;">lo paga el dueño</span>`
+        : it.cobrado
+          ? `<span style="color:#1a9a4a;">✓ cobrado al dueño</span>`
+          : `<span style="color:#c0392b;">a reclamar al dueño</span>`;
+      const tipoTxt = it.tipo === "gasto" ? "🛒 Gasto" : `🔧 Trabajo${it.persona ? " · " + esc(it.persona) : ""}`;
+      return `
+        <div class="ins-row">
+          <div style="flex:1;min-width:0;">
+            <div style="font-weight:600;">${esc(it.descripcion)}</div>
+            <div style="font-size:12px;color:#777;margin-top:2px;">${tipoTxt} · <b>${fmt(it.monto)}</b> · ${quien} · ${esc(it.fecha || "")}</div>
+          </div>
+          <div style="display:flex;gap:6px;align-items:center;flex-shrink:0;">
+            ${reclamo ? `<button class="btn-secondary" data-mnt-cobrado="${it.id}" data-cobrado="${it.cobrado ? 1 : 0}">${it.cobrado ? "Revertir" : "Cobrado"}</button>` : ""}
+            <button class="btn-secondary" data-mnt-del="${it.id}" style="color:#c0392b;">Borrar</button>
+          </div>
+        </div>`;
+    };
+
+    const deptoCard = (g) => `
+      <div class="card">
+        <p class="card-title">${esc(g.direccion ? g.direccion.split(",")[0].trim() : g.nombre)}</p>
+        <p class="card-sub" style="margin-bottom:6px;">${esc(g.nombre)}</p>
+        ${g.items.map(itemRow).join("")}
+      </div>`;
+
+    const optDeptos = props.map((p) => `<option value="${p.codigo}">${esc(p.nombre)} — ${esc(p.direccion || p.barrio)}</option>`).join("");
+
+    const form = `
+      <div class="card" style="margin-top:8px;">
+        <div style="display:flex;flex-direction:column;gap:10px;">
+          <label style="font-size:13px;font-weight:600;">Tipo
+            <select id="mnt-tipo" style="width:100%;margin-top:4px;"><option value="trabajo">🔧 Trabajo (mano de obra)</option><option value="gasto">🛒 Gasto (compra)</option></select>
+          </label>
+          <label id="mnt-persona-lbl" style="font-size:13px;font-weight:600;">Persona
+            <input id="mnt-persona" type="text" value="Adrian" style="width:100%;margin-top:4px;" />
+          </label>
+          <label style="font-size:13px;font-weight:600;">Departamento
+            <select id="mnt-depto" style="width:100%;margin-top:4px;">${optDeptos}</select>
+          </label>
+          <label style="font-size:13px;font-weight:600;">Descripción
+            <input id="mnt-desc" type="text" placeholder="ej. duplicado de llaves, arreglo de canilla, lamparitas…" style="width:100%;margin-top:4px;" />
+          </label>
+          <label style="font-size:13px;font-weight:600;">Monto (ARS)
+            <input id="mnt-monto" type="number" inputmode="numeric" placeholder="0" style="width:100%;margin-top:4px;" />
+          </label>
+          <label style="font-size:13px;font-weight:600;">Quién paga
+            <select id="mnt-paga" style="width:100%;margin-top:4px;"><option value="esteban">Lo pago yo y lo reclamo al dueño</option><option value="propietario">Lo paga el dueño directo</option></select>
+          </label>
+          <div style="display:flex;gap:8px;margin-top:4px;">
+            <button class="btn-secondary" data-mnt-cancel style="flex:1;">Cancelar</button>
+            <button class="btn-primary" data-mnt-guardar style="flex:1;">Guardar</button>
+          </div>
+        </div>
+      </div>`;
+
+    setMain(`
+      <h1 class="ab-headline">Mantenimiento</h1>
+      <div class="ab-sub">Trabajos y gastos por depto · <b>${fmt(totalPend)}</b> pendiente de cobro a propietarios</div>
+      <div style="margin:14px 0 4px;"><button class="btn-primary" data-mnt-nuevo>+ Agregar</button></div>
+      <div id="mnt-form" hidden>${form}</div>
+      ${items.length === 0 ? `<div class="empty-state" style="margin-top:16px;">No hay registros de mantenimiento.</div>` : `<div style="margin-top:8px;">${Array.from(byDepto.values()).map(deptoCard).join("")}</div>`}
+    `);
+
+    const formEl = document.getElementById("mnt-form");
+    const tipoEl = document.getElementById("mnt-tipo");
+    const personaLbl = document.getElementById("mnt-persona-lbl");
+    const syncPersona = () => { personaLbl.hidden = tipoEl.value !== "trabajo"; };
+    tipoEl.onchange = syncPersona;
+    syncPersona();
+
+    document.querySelector("[data-mnt-nuevo]").onclick = () => { formEl.hidden = !formEl.hidden; };
+    document.querySelector("[data-mnt-cancel]").onclick = () => { formEl.hidden = true; };
+
+    document.querySelector("[data-mnt-guardar]").onclick = async () => {
+      const tipo = tipoEl.value;
+      const descripcion = document.getElementById("mnt-desc").value.trim();
+      const monto = Number(document.getElementById("mnt-monto").value) || 0;
+      const propertyCode = document.getElementById("mnt-depto").value;
+      if (!descripcion) { toast("Poné una descripción"); return; }
+      if (!(monto > 0)) { toast("Poné un monto"); return; }
+      const payload = {
+        tipo, propertyCode, descripcion, monto,
+        paga: document.getElementById("mnt-paga").value,
+        persona: tipo === "trabajo" ? (document.getElementById("mnt-persona").value.trim() || "Adrian") : null,
+      };
+      try {
+        await fetchJSON(`${API}/mantenimiento`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+        toast("Guardado");
+        renderMantenimiento();
+      } catch (e) { toast("Error: " + e.message); }
+    };
+
+    document.querySelectorAll("[data-mnt-cobrado]").forEach((btn) => {
+      btn.onclick = async () => {
+        const id = btn.getAttribute("data-mnt-cobrado");
+        const nuevo = btn.getAttribute("data-cobrado") !== "1";
+        await fetchJSON(`${API}/mantenimiento`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, cobrado: nuevo }) });
+        toast(nuevo ? "Marcado como cobrado" : "Revertido");
+        renderMantenimiento();
+      };
+    });
+
+    document.querySelectorAll("[data-mnt-del]").forEach((btn) => {
+      btn.onclick = async () => {
+        if (!confirm("¿Borrar este registro?")) return;
+        await fetchJSON(`${API}/mantenimiento`, { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: btn.getAttribute("data-mnt-del") }) });
+        toast("Borrado");
+        renderMantenimiento();
+      };
+    });
+  } catch (err) {
+    setMain(`<div class="empty-state">Error: ${err.message}</div>`);
+  }
+}
 
 async function renderLavanderia() {
   try {
