@@ -1492,6 +1492,8 @@ async function renderPagosAjustes() {
               <input type="tel" data-tel="${e.id}" value="${(cfg.telefonos && cfg.telefonos[e.id]) || ""}" placeholder="Ej: 5491130171397" />`
             )
             .join("")}
+          ${(CONFIG.employees || []).filter((e) => e.rol === "mantenimiento").map((e) => `<label class="aj-label">${e.nombre}</label>
+              <input type="tel" data-tel="${e.id}" value="${(cfg.telefonos && cfg.telefonos[e.id]) || ""}" placeholder="Ej: 5491130171397" />`).join("")}
           <label class="aj-label">Ruta de lavandería (a quién se le manda)</label>
           <input type="tel" data-tel="ruta_lavanderia" value="${(cfg.telefonos && cfg.telefonos["ruta_lavanderia"]) || "+5491130171397"}" placeholder="Ej: 5491130171397" />
         </div>
@@ -2394,39 +2396,60 @@ async function renderIngresosConfig(guardados, cfg) {
 // ---------- Lavanderia ----------
 
 // ---------- Mantenimiento (trabajos de Adrian + gastos, montos en ARS) ----------
+// Los TRABAJOS son tareas manuales (tipo "Mantenimiento", asignadas a un
+// colaborador de mantenimiento) => aparecen en el Calendario/Hoy y se marcan
+// hecho como cualquier tarea. Los GASTOS (compras) viven en su propio blob y
+// no van al calendario. Ambos llevan quién paga + cobrado para el reclamo.
 async function renderMantenimiento() {
   try {
-    const items = await fetchJSON(`${API}/mantenimiento`);
+    const [payload, gastosRaw] = await Promise.all([fetchJSON(`${API}/tasks`), fetchJSON(`${API}/mantenimiento`)]);
     const props = CONFIG.properties || [];
+    const mantPeople = (CONFIG.employees || []).filter((e) => e.rol === "mantenimiento");
     const fmt = (n) => "$" + Math.round(n || 0).toLocaleString("es-AR");
     const esc = (s) => String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
-    const pendientes = items.filter((i) => i.paga === "esteban" && !i.cobrado);
-    const totalPend = pendientes.reduce((s, i) => s + (Number(i.monto) || 0), 0);
+    // Trabajos = tareas manuales tipo "Mantenimiento" (traen status/cobrado ya con overrides).
+    const trabajos = (payload.tasks || [])
+      .filter((t) => t.source === "manual" && t.tipo === "Mantenimiento")
+      .map((t) => ({
+        id: t.id, origen: "trabajo", propertyCode: t.propertyCode, propertyName: t.propertyName,
+        direccion: t.direccion, descripcion: t.notes || "", monto: Number(t.monto) || 0,
+        paga: t.paga || "esteban", cobrado: !!t.cobrado, fecha: t.date, assignedTo: t.assignedTo, hecho: t.status === "hecha",
+      }));
+    // Gastos = blob mantenimiento.
+    const gastos = (gastosRaw || []).map((g) => ({
+      id: g.id, origen: "gasto", propertyCode: g.propertyCode, propertyName: g.propertyName,
+      direccion: g.direccion, descripcion: g.descripcion || "", monto: Number(g.monto) || 0,
+      paga: g.paga || "esteban", cobrado: !!g.cobrado, fecha: g.fecha,
+    }));
+    const all = trabajos.concat(gastos);
+    const totalPend = all.filter((i) => i.paga === "esteban" && !i.cobrado).reduce((s, i) => s + i.monto, 0);
 
     const byDepto = new Map();
-    for (const it of items) {
+    for (const it of all) {
       if (!byDepto.has(it.propertyCode)) byDepto.set(it.propertyCode, { nombre: it.propertyName, direccion: it.direccion, items: [] });
       byDepto.get(it.propertyCode).items.push(it);
     }
+    for (const g of byDepto.values()) g.items.sort((a, b) => (b.fecha || "").localeCompare(a.fecha || ""));
 
     const itemRow = (it) => {
       const reclamo = it.paga === "esteban";
       const quien = !reclamo
         ? `<span style="color:#888;">lo paga el dueño</span>`
-        : it.cobrado
-          ? `<span style="color:#1a9a4a;">✓ cobrado al dueño</span>`
-          : `<span style="color:#c0392b;">a reclamar al dueño</span>`;
-      const tipoTxt = it.tipo === "gasto" ? "🛒 Gasto" : `🔧 Trabajo${it.persona ? " · " + esc(it.persona) : ""}`;
+        : it.cobrado ? `<span style="color:#1a9a4a;">✓ cobrado</span>` : `<span style="color:#c0392b;">a reclamar al dueño</span>`;
+      const tipoTxt = it.origen === "gasto"
+        ? "🛒 Gasto"
+        : `🔧 Trabajo${it.assignedTo ? " · " + esc(employeeName(it.assignedTo)) : ""}${it.hecho ? ` · <span style="color:#1a9a4a;">hecho</span>` : ""}`;
       return `
         <div class="ins-row">
           <div style="flex:1;min-width:0;">
             <div style="font-weight:600;">${esc(it.descripcion)}</div>
             <div style="font-size:12px;color:#777;margin-top:2px;">${tipoTxt} · <b>${fmt(it.monto)}</b> · ${quien} · ${esc(it.fecha || "")}</div>
           </div>
-          <div style="display:flex;gap:6px;align-items:center;flex-shrink:0;">
-            ${reclamo ? `<button class="btn-secondary" data-mnt-cobrado="${it.id}" data-cobrado="${it.cobrado ? 1 : 0}">${it.cobrado ? "Revertir" : "Cobrado"}</button>` : ""}
-            <button class="btn-secondary" data-mnt-del="${it.id}" style="color:#c0392b;">Borrar</button>
+          <div style="display:flex;gap:6px;align-items:center;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end;">
+            ${it.origen === "trabajo" ? `<button class="btn-secondary" data-mnt-wa="${it.id}">WhatsApp</button>` : ""}
+            ${reclamo ? `<button class="btn-secondary" data-mnt-cobrado="${it.id}" data-origen="${it.origen}" data-cobrado="${it.cobrado ? 1 : 0}">${it.cobrado ? "Revertir" : "Cobrado"}</button>` : ""}
+            <button class="btn-secondary" data-mnt-del="${it.id}" data-origen="${it.origen}" style="color:#c0392b;">Borrar</button>
           </div>
         </div>`;
     };
@@ -2439,6 +2462,8 @@ async function renderMantenimiento() {
       </div>`;
 
     const optDeptos = props.map((p) => `<option value="${p.codigo}">${esc(p.nombre)} — ${esc(p.direccion || p.barrio)}</option>`).join("");
+    const optPersonas = (mantPeople.length ? mantPeople : [{ id: "adrian", nombre: "Adrian" }]).map((e) => `<option value="${e.id}">${esc(e.nombre)}</option>`).join("");
+    const hoyISO = todayISO();
 
     const form = `
       <div class="card" style="margin-top:8px;">
@@ -2446,8 +2471,11 @@ async function renderMantenimiento() {
           <label style="font-size:13px;font-weight:600;">Tipo
             <select id="mnt-tipo" style="width:100%;margin-top:4px;"><option value="trabajo">🔧 Trabajo (mano de obra)</option><option value="gasto">🛒 Gasto (compra)</option></select>
           </label>
-          <label id="mnt-persona-lbl" style="font-size:13px;font-weight:600;">Persona
-            <input id="mnt-persona" type="text" value="Adrian" style="width:100%;margin-top:4px;" />
+          <label id="mnt-persona-lbl" style="font-size:13px;font-weight:600;">Colaborador
+            <select id="mnt-persona" style="width:100%;margin-top:4px;">${optPersonas}</select>
+          </label>
+          <label style="font-size:13px;font-weight:600;">Fecha
+            <input id="mnt-fecha" type="date" value="${hoyISO}" style="width:100%;margin-top:4px;" />
           </label>
           <label style="font-size:13px;font-weight:600;">Departamento
             <select id="mnt-depto" style="width:100%;margin-top:4px;">${optDeptos}</select>
@@ -2473,7 +2501,7 @@ async function renderMantenimiento() {
       <div class="ab-sub">Trabajos y gastos por depto · <b>${fmt(totalPend)}</b> pendiente de cobro a propietarios</div>
       <div style="margin:14px 0 4px;"><button class="btn-primary" data-mnt-nuevo>+ Agregar</button></div>
       <div id="mnt-form" hidden>${form}</div>
-      ${items.length === 0 ? `<div class="empty-state" style="margin-top:16px;">No hay registros de mantenimiento.</div>` : `<div style="margin-top:8px;">${Array.from(byDepto.values()).map(deptoCard).join("")}</div>`}
+      ${all.length === 0 ? `<div class="empty-state" style="margin-top:16px;">No hay registros de mantenimiento.</div>` : `<div style="margin-top:8px;">${Array.from(byDepto.values()).map(deptoCard).join("")}</div>`}
     `);
 
     const formEl = document.getElementById("mnt-form");
@@ -2491,15 +2519,17 @@ async function renderMantenimiento() {
       const descripcion = document.getElementById("mnt-desc").value.trim();
       const monto = Number(document.getElementById("mnt-monto").value) || 0;
       const propertyCode = document.getElementById("mnt-depto").value;
+      const fecha = document.getElementById("mnt-fecha").value || hoyISO;
+      const paga = document.getElementById("mnt-paga").value;
       if (!descripcion) { toast("Poné una descripción"); return; }
       if (!(monto > 0)) { toast("Poné un monto"); return; }
-      const payload = {
-        tipo, propertyCode, descripcion, monto,
-        paga: document.getElementById("mnt-paga").value,
-        persona: tipo === "trabajo" ? (document.getElementById("mnt-persona").value.trim() || "Adrian") : null,
-      };
       try {
-        await fetchJSON(`${API}/mantenimiento`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+        if (tipo === "trabajo") {
+          const assignedTo = document.getElementById("mnt-persona").value || "adrian";
+          await fetchJSON(`${API}/manual-tasks`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ date: fecha, tipo: "Mantenimiento", propertyCode, assignedTo, notes: descripcion, monto, paga, valor: 0 }) });
+        } else {
+          await fetchJSON(`${API}/mantenimiento`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tipo: "gasto", propertyCode, descripcion, monto, paga, fecha }) });
+        }
         toast("Guardado");
         renderMantenimiento();
       } catch (e) { toast("Error: " + e.message); }
@@ -2508,8 +2538,13 @@ async function renderMantenimiento() {
     document.querySelectorAll("[data-mnt-cobrado]").forEach((btn) => {
       btn.onclick = async () => {
         const id = btn.getAttribute("data-mnt-cobrado");
+        const origen = btn.getAttribute("data-origen");
         const nuevo = btn.getAttribute("data-cobrado") !== "1";
-        await fetchJSON(`${API}/mantenimiento`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, cobrado: nuevo }) });
+        if (origen === "trabajo") {
+          await fetchJSON(`${API}/manual-tasks`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, cobrado: nuevo }) });
+        } else {
+          await fetchJSON(`${API}/mantenimiento`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, cobrado: nuevo }) });
+        }
         toast(nuevo ? "Marcado como cobrado" : "Revertido");
         renderMantenimiento();
       };
@@ -2518,11 +2553,30 @@ async function renderMantenimiento() {
     document.querySelectorAll("[data-mnt-del]").forEach((btn) => {
       btn.onclick = async () => {
         if (!confirm("¿Borrar este registro?")) return;
-        await fetchJSON(`${API}/mantenimiento`, { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: btn.getAttribute("data-mnt-del") }) });
+        const id = btn.getAttribute("data-mnt-del");
+        const origen = btn.getAttribute("data-origen");
+        const url = origen === "trabajo" ? `${API}/manual-tasks` : `${API}/mantenimiento`;
+        await fetchJSON(url, { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) });
         toast("Borrado");
         renderMantenimiento();
       };
     });
+
+    const waNodes = document.querySelectorAll("[data-mnt-wa]");
+    if (waNodes.length) {
+      const tels = await getTelefonos();
+      waNodes.forEach((btn) => {
+        btn.onclick = () => {
+          const it = trabajos.find((t) => t.id === btn.getAttribute("data-mnt-wa"));
+          if (!it) return;
+          const msg = `🔧 Trabajo de mantenimiento
+📍 ${it.direccion || it.propertyName}
+📅 ${it.fecha}
+📝 ${it.descripcion}`;
+          abrirWhatsapp(tels[it.assignedTo], msg);
+        };
+      });
+    }
   } catch (err) {
     setMain(`<div class="empty-state">Error: ${err.message}</div>`);
   }

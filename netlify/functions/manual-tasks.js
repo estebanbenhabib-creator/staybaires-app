@@ -50,6 +50,10 @@ exports.handler = async (event) => {
       valor: Number(body.valor) || 0,
       notes: body.notes || null,
       status: "pendiente",
+      // Campos de Mantenimiento (solo para tareas tipo "Mantenimiento"):
+      monto: Number(body.monto) || 0, // ARS que se le paga a la persona
+      paga: body.paga || null, // "esteban" (reclamo al dueño) | "propietario"
+      cobrado: !!body.cobrado, // si paga=esteban: ya me lo cobró el dueño
     };
     const list = await getJSON("manual-tasks", []);
     list.push(task);
@@ -75,13 +79,18 @@ exports.handler = async (event) => {
     const list = await getJSON("manual-tasks", []);
     const idx = list.findIndex((t) => t.id === body.id);
     if (idx === -1) return json(404, { error: "No existe esa tarea" });
-    if (body.valor != null) list[idx].valor = Number(body.valor) || 0;
-    if (body.notes !== undefined) list[idx].notes = body.notes;
+    const cambios = {};
+    if (body.valor != null) cambios.valor = Number(body.valor) || 0;
+    if (body.notes !== undefined) cambios.notes = body.notes;
+    if (body.monto != null) cambios.monto = Number(body.monto) || 0;
+    if (body.paga !== undefined) cambios.paga = body.paga;
+    if (body.cobrado !== undefined) cambios.cobrado = !!body.cobrado;
+    Object.assign(list[idx], cambios);
     await setJSON("manual-tasks", list);
 
-    // reflejar el cambio en el cache para que la liquidacion lo tome ya.
+    // reflejar el cambio en el cache para que las vistas lo tomen ya.
     const payload = await getJSON("tasks-cache", { tasks: [], checkins: [] });
-    payload.tasks = (payload.tasks || []).map((t) => (t.id === body.id ? { ...t, valor: list[idx].valor, notes: list[idx].notes } : t));
+    payload.tasks = (payload.tasks || []).map((t) => (t.id === body.id ? { ...t, ...cambios } : t));
     await setJSON("tasks-cache", payload);
 
     return json(200, { ok: true, task: list[idx] });

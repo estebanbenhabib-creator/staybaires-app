@@ -48,6 +48,15 @@
           "notas": "Retiros y entregas de blanqueria. Se paga por transferencia, no por dia trabajado."
     },
     {
+          "id": "adrian",
+          "nombre": "Adrian",
+          "rol": "mantenimiento",
+          "jerarquia": null,
+          "ordenAsignacion": null,
+          "tarifaPorDia": null,
+          "notas": "Mantenimiento. Se paga por trabajo (monto del modulo), no por dia. No entra a la app."
+    },
+    {
           "id": "esteban",
           "nombre": "Esteban",
           "rol": "admin",
