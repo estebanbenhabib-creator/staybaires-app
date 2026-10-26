@@ -1724,14 +1724,21 @@ function fmtMesLargo(periodo) {
   return `${meses[Number(m) - 1] || m} ${y}`;
 }
 
+// Activas + archivadas. La operación (calendario/tareas) usa CONFIG.properties
+// (solo activas); Ingresos usa allProps() para seguir nombrando y asociando los
+// deptos dados de baja que todavía tienen cobros rezagados.
+function allProps() {
+  return (CONFIG.properties || []).concat(CONFIG.propertiesArchivadas || []);
+}
+
 function nombreDepto(codigo) {
-  const p = (CONFIG.properties || []).find((x) => x.codigo === codigo);
+  const p = allProps().find((x) => x.codigo === codigo);
   return p ? p.direccion || p.nombre : codigo;
 }
 
 // Nombre del propietario, derivado del nombre del depto ("Luchi Depto" -> "Luchi").
 function nombrePropietario(codigo) {
-  const p = (CONFIG.properties || []).find((x) => x.codigo === codigo);
+  const p = allProps().find((x) => x.codigo === codigo);
   if (!p) return codigo;
   return (p.nombre || "").replace(/\s*depto.*$/i, "").trim() || p.nombre || codigo;
 }
@@ -1988,7 +1995,7 @@ async function renderIngresos() {
         costosEnVivo = costos.totales.total > 0;
       } catch (e) {}
     }
-    const cfgCalc = Object.assign({}, cfg, { valorDepto: payCfg.valorDepto || {}, extras: extrasMes, cotizacion, direcciones: (CONFIG.properties || []).map((p) => ({ codigo: p.codigo, direccion: p.direccion })) });
+    const cfgCalc = Object.assign({}, cfg, { valorDepto: payCfg.valorDepto || {}, extras: extrasMes, cotizacion, direcciones: allProps().map((p) => ({ codigo: p.codigo, direccion: p.direccion })) });
     // Reservas cargadas a mano del mes (no vienen en los exports).
     const manualesMes = (manuales || []).filter((x) => x.periodo === INGRESOS_MES);
     const reservasManuales = manualesMes.map((x) => ({ plataforma: "manual", codigo: x.codigo, inicio: x.inicio, fin: x.fin, huesped: x.huesped, total: x.total, limpieza: x.limpieza, comisionPct: x.comisionPct, manualId: x.id }));
@@ -2262,7 +2269,7 @@ async function renderIngresosConfig(guardados, cfg) {
   const crudas = [];
   for (const p of Object.values(guardados)) if (p.reservas) crudas.push(...p.reservas);
   const unidades = IngresosEngine.unidadesDetectadas(crudas);
-  const props = CONFIG.properties || [];
+  const props = allProps();
   const mapeo = cfg.mapeo || {};
 
   const opciones = (sel) =>
