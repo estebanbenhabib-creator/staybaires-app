@@ -39,6 +39,25 @@
           "notas": "Refuerzo / rotativa. Login para ver sus asignaciones."
     },
     {
+          "id": "adriana",
+          "nombre": "Adriana",
+          "rol": "empleada",
+          "jerarquia": "rotativa",
+          "ordenAsignacion": 5,
+          "tarifaPorDia": 5000,
+          "password": "adriana2026",
+          "notas": "Refuerzo / rotativa. Login para ver sus asignaciones."
+    },
+    {
+          "id": "otro",
+          "nombre": "Otro",
+          "rol": "empleada",
+          "jerarquia": "rotativa",
+          "ordenAsignacion": 6,
+          "tarifaPorDia": 5000,
+          "notas": "Comodin para asignar a mano a alguien eventual. Sin login."
+    },
+    {
           "id": "lujan",
           "nombre": "Lujan",
           "rol": "lavanderia",
