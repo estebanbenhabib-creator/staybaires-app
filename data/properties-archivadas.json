@@ -1,0 +1,26 @@
+[
+    {
+        "codigo": "1117",
+        "nombre": "Majo Depto",
+        "barrio": "Palermo",
+        "direccion": "Arévalo 2357, piso 4 depto 21",
+        "tarifaLimpiezaUSD": 30,
+        "icalAirbnb": "https://www.airbnb.com.ar/calendar/ical/1419666312139209117.ics?t=46da6f20426e454d89f0390e9da351c3",
+        "icalBooking": null,
+        "icalVrbo": null,
+        "archivadoEl": "2026-10-26",
+        "motivo": "Ya no se administra. Conservar por si se retoma el contacto."
+    },
+    {
+        "codigo": "1132",
+        "nombre": "Anni Depto",
+        "barrio": "Almagro",
+        "direccion": "Gallo 414, piso 8 depto D",
+        "tarifaLimpiezaUSD": 40,
+        "icalAirbnb": "https://www.airbnb.com.ar/calendar/ical/1766257876933512665.ics?t=b61b4e34183143ada902869ca28c915e",
+        "icalBooking": null,
+        "icalVrbo": null,
+        "archivadoEl": "2026-10-26",
+        "motivo": "Ya no se administra. Conservar por si se retoma el contacto."
+    }
+]
